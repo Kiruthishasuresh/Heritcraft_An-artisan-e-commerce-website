@@ -62,22 +62,34 @@ public class User {
     @Column(name = "profile_image", length = 1000)
     private String profileImage;
 
-    private boolean approved;
+    private Boolean approved = false;
 
-    private boolean active;
+    private Boolean active = false;
+
+    @Column(name = "phone_verified")
+    private Boolean phoneVerified = false;
+
+    @Column(name = "phone_verified_at")
+    private LocalDateTime phoneVerifiedAt;
 
     private LocalDateTime createdAt;
 
     @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-
-        if (!active) {
-            active = true;
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
         }
-
-        if (role != null && role.equalsIgnoreCase("buyer")) {
+        if (role != null && (role.equalsIgnoreCase("buyer") || role.equalsIgnoreCase("admin"))) {
             approved = true;
+        }
+        if (phoneVerified == null) {
+            phoneVerified = false;
+        }
+        if (active == null) {
+            active = false;
+        }
+        if (approved == null) {
+            approved = false;
         }
     }
 }

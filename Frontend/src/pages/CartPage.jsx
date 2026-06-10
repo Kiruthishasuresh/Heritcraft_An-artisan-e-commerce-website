@@ -12,6 +12,7 @@ import {
   FiLoader,
   FiAlertTriangle
 } from "react-icons/fi";
+import BackButton from "../components/common/BackButton";
 
 const CartPage = () => {
   const {
@@ -94,6 +95,9 @@ const CartPage = () => {
 
   return (
     <div className="page-wrap animate-fadeIn">
+      <div style={{ marginBottom: 18 }}>
+        <BackButton fallback="/products" label="Continue Shopping" />
+      </div>
       <h1 className="section-title mb-10">
         Shopping Cart ({totalItems} items)
       </h1>

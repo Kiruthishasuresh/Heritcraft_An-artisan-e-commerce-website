@@ -6,6 +6,7 @@ import { FiCheck } from "react-icons/fi";
 import { orderAPI, paymentAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import BackButton from "../components/common/BackButton";
 
 const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 
@@ -403,6 +404,9 @@ const CheckoutPage = () => {
 
   return (
     <div className="page-wrap animate-fadeIn">
+      <div style={{ marginBottom: 18 }}>
+        <BackButton fallback="/cart" label="Back to Cart" />
+      </div>
       <h1 className="section-title mb-10">Checkout</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">

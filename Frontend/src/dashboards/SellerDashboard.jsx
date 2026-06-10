@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { productAPI, orderAPI, userAPI, reportAPI, reviewAPI } from "../services/api";
@@ -6,7 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import DashboardLayout from "../components/DashboardLayout";
 import SellerReviews from "../components/seller/SellerReviews";
 import ConfirmModal from "../components/common/ConfirmModal";
-import { FiGrid, FiPackage, FiShoppingBag, FiBox, FiBarChart2, FiPlus, FiEdit2, FiTrash2, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiAlertTriangle, FiDollarSign, FiTrendingUp, FiUser, FiSettings, FiMail, FiPhone, FiMapPin, FiCheckCircle, FiStar, FiMessageSquare, FiDownload } from "react-icons/fi";
+import { FiGrid, FiPackage, FiShoppingBag, FiBox, FiBarChart2, FiPlus, FiEdit2, FiTrash2, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiAlertTriangle, FiDollarSign, FiTrendingUp, FiUser, FiSettings, FiMail, FiPhone, FiMapPin, FiCheckCircle, FiStar, FiMessageSquare, FiDownload, FiArrowLeft } from "react-icons/fi";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
 
 const STATUS_COLORS = {
@@ -59,16 +59,40 @@ const ALL_LENGTHS = ["1m", "2m", "3m", "5m", "10m"];
 const ALL_VOLUMES = ["250ml", "500ml", "1L", "2L", "5L"];
 const ALL_QUANTITIES = ["1 Piece", "Set of 2", "Set of 4", "Set of 6", "Set of 12"];
 
+const emptyProductForm = {
+  name: "",
+  category: "Handmade Clothes",
+  productType: "",
+  price: "",
+  oldPrice: "",
+  stock: "",
+  description: "",
+  handmadeStory: "",
+  material: "",
+  deliveryTime: "",
+  featured: false,
+  media: [],
+  sizes: [],
+  weights: [],
+  lengths: [],
+  volumes: [],
+  quantities: [],
+  makingVideoUrl: "",
+  makingVideoTitle: "",
+};
+
 const SellerDashboard = () => {
   const { user, updateUser } = useAuth();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("products");
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
   const [reviewStats, setReviewStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const imageInputRef = useRef(null);
+  const [imagePreviews, setImagePreviews] = useState([]);
   const [confirmDeleteProduct, setConfirmDeleteProduct] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -95,22 +119,20 @@ const SellerDashboard = () => {
   // Read ?tab=profile from URL on mount
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam) setActiveTab(tabParam);
+    if (tabParam && tabParam !== "dashboard" && tabParam !== "overview") {
+      setActiveTab(tabParam);
+    } else if (tabParam === "dashboard" || tabParam === "overview") {
+      setActiveTab("products");
+    }
   }, [searchParams]);
 
   const [categoriesList, setCategoriesList] = useState(["Handmade Clothes", "Home Decor", "Accessories", "Snacks", "Crafts"]);
   const [newCategoryName, setNewCategoryName] = useState("");
 
-  const [form, setForm] = useState({
-    name: "", category: "Handmade Clothes", productType: "", price: "", oldPrice: "", stock: "",
-    description: "", handmadeStory: "", material: "", deliveryTime: "", featured: false,
-    media: [{ url: "", type: "image/jpeg", name: "" }], sizes: [], weights: [],
-    lengths: [], volumes: [], quantities: [], makingVideoUrl: "", makingVideoTitle: ""
-  });
+  const [form, setForm] = useState(emptyProductForm);
 
   const tabs = useMemo(() => {
     const list = [
-      { key: "dashboard", label: "Overview", icon: <FiGrid /> },
       { key: "products", label: "Products", icon: <FiPackage /> },
       { key: "orders", label: "Orders", icon: <FiShoppingBag /> },
       { key: "reviews", label: "Reviews", icon: <FiStar /> },
@@ -221,8 +243,7 @@ const SellerDashboard = () => {
 
   useEffect(() => {
     if (!user?.id) return;
-    if (activeTab === "dashboard") loadOverviewData();
-    else if (activeTab === "products") loadProductsData();
+    if (activeTab === "products") loadProductsData();
     else if (activeTab === "orders") loadOrdersData();
     else if (activeTab === "inventory") loadInventoryData();
     else if (activeTab === "refunds") loadRefundRequestsData();
@@ -280,38 +301,180 @@ const SellerDashboard = () => {
     );
   }
 
+  const fileToBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const closeProductModal = () => {
+    setShowModal(false);
+    setEditingProduct(null);
+    setImagePreviews([]);
+    setNewCategoryName("");
+    setForm(emptyProductForm);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+
+    if (!files.length) return;
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+    const validFiles = files.filter((file) => {
+      if (!allowedTypes.includes(file.type)) {
+        toast.error(`${file.name} is not a valid image`);
+        return false;
+      }
+
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error(`${file.name} must be below 2MB`);
+        return false;
+      }
+
+      return true;
+    });
+
+    if (!validFiles.length) return;
+
+    try {
+      const convertedImages = await Promise.all(
+        validFiles.map(async (file, index) => {
+          const base64 = await fileToBase64(file);
+
+          return {
+            url: base64,
+            type: file.type || "image/jpeg",
+            name: file.name || `Product Image ${index + 1}`,
+          };
+        })
+      );
+
+      setForm((prev) => ({
+        ...prev,
+        media: [...(prev.media || []), ...convertedImages],
+      }));
+
+      setImagePreviews((prev) => [
+        ...prev,
+        ...convertedImages.map((img) => ({
+          url: img.url,
+          name: img.name,
+        })),
+      ]);
+
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to upload image");
+    }
+  };
+
+  const removeUploadedImage = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      media: (prev.media || []).filter((_, i) => i !== index),
+    }));
+
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const openAddModal = () => {
     setEditingProduct(null);
-    setForm({ name: "", category: "Handmade Clothes", productType: "", price: "", oldPrice: "", stock: "", description: "", handmadeStory: "", material: "", deliveryTime: "", featured: false, media: [{ url: "", type: "image/jpeg", name: "" }], sizes: [], weights: [], lengths: [], volumes: [], quantities: [], makingVideoUrl: "", makingVideoTitle: "" });
+    setForm(emptyProductForm);
+    setImagePreviews([]);
     setNewCategoryName("");
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
     setShowModal(true);
   };
 
   const openEditModal = (p) => {
     setEditingProduct(p);
-    const isDefault = ["Handmade Clothes", "Home Decor", "Accessories", "Snacks", "Crafts"].includes(p.category || "");
+
+    const existingMedia = Array.isArray(p.media) ? p.media : [];
+    const mediaFromImages = Array.isArray(p.images)
+      ? p.images.map((url, index) => ({
+          url,
+          type: "image/jpeg",
+          name: `Existing Product Image ${index + 1}`,
+        }))
+      : [];
+
+    const safeMedia = existingMedia.length > 0 ? existingMedia : mediaFromImages;
+
     setForm({
-      name: p.name || "", category: p.category || "Handmade Clothes", productType: p.productType || "",
-      price: p.price || "", oldPrice: p.oldPrice || "", stock: p.stock || "",
-      description: p.description || "", handmadeStory: p.handmadeStory || "",
-      material: p.material || "", deliveryTime: p.deliveryTime || "",
+      name: p.name || "",
+      category: p.category || "Handmade Clothes",
+      productType: p.productType || "",
+      price: p.price || "",
+      oldPrice: p.oldPrice || "",
+      stock: p.stock || "",
+      description: p.description || "",
+      handmadeStory: p.handmadeStory || "",
+      material: p.material || "",
+      deliveryTime: p.deliveryTime || "",
       featured: p.featured || false,
-      media: (p.images || []).map(url => ({ url, type: "image/jpeg", name: "" })),
-      sizes: p.sizes || [], weights: p.weights || [], lengths: p.lengths || [],
-      volumes: p.volumes || [], quantities: p.quantities || [],
-      makingVideoUrl: p.makingVideoUrl || "", makingVideoTitle: p.makingVideoTitle || ""
+      media: safeMedia,
+      sizes: p.sizes || [],
+      weights: p.weights || [],
+      lengths: p.lengths || [],
+      volumes: p.volumes || [],
+      quantities: p.quantities || [],
+      makingVideoUrl: p.makingVideoUrl || "",
+      makingVideoTitle: p.makingVideoTitle || "",
     });
-    if (form.media.length === 0) form.media = [{ url: "", type: "image/jpeg", name: "" }];
-    if (!isDefault && p.category) {
+
+    setImagePreviews(
+      safeMedia
+        .filter((img) => img?.url)
+        .map((img, index) => ({
+          url: img.url,
+          name: img.name || `Product Image ${index + 1}`,
+        }))
+    );
+
+    const defaultCategories = [
+      "Handmade Clothes",
+      "Home Decor",
+      "Accessories",
+      "Snacks",
+      "Crafts",
+    ];
+
+    if (p.category && !defaultCategories.includes(p.category)) {
       setNewCategoryName(p.category);
     } else {
       setNewCategoryName("");
     }
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.price || !form.stock) { toast.error("Fill required fields"); return; }
+    if (!form.name || !form.price || !form.stock) {
+      toast.error("Fill required fields");
+      return;
+    }
+
+    if (!editingProduct && (!form.media || form.media.length === 0)) {
+      toast.error("Please upload at least one product image");
+      return;
+    }
+
     let finalCategory = form.category;
     if (form.category === "Others / Add New Category") {
       if (!newCategoryName.trim()) {
@@ -320,21 +483,33 @@ const SellerDashboard = () => {
       }
       finalCategory = newCategoryName.trim();
     }
+
     const payload = {
-      name: form.name, category: finalCategory, productType: form.productType,
-      price: parseFloat(form.price), oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : null,
-      stock: parseInt(form.stock), description: form.description, handmadeStory: form.handmadeStory,
-      material: form.material, deliveryTime: form.deliveryTime, featured: form.featured,
-      sellerId: user.id, sellerName: user.name, sellerShopName: user.shopName || "", sellerProfileImage: user.profileImage || "",
-      media: form.media.filter(m => m.url.trim()),
+      name: form.name,
+      category: finalCategory,
+      productType: form.productType,
+      price: parseFloat(form.price),
+      oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : null,
+      stock: parseInt(form.stock),
+      description: form.description,
+      handmadeStory: form.handmadeStory,
+      material: form.material,
+      deliveryTime: form.deliveryTime,
+      featured: form.featured,
+      sellerId: user.id,
+      sellerName: user.name,
+      sellerShopName: user.shopName || "",
+      sellerProfileImage: user.profileImage || "",
+      media: (form.media || []).filter((m) => m.url && m.url.trim()),
       sizes: showSize ? form.sizes : [],
       weights: showWeight ? form.weights : [],
       lengths: showLength ? form.lengths : [],
       volumes: showVolume ? form.volumes : [],
       quantities: showQuantity ? form.quantities : [],
       makingVideoUrl: form.makingVideoUrl || "",
-      makingVideoTitle: form.makingVideoTitle || ""
+      makingVideoTitle: form.makingVideoTitle || "",
     };
+
     try {
       if (editingProduct) {
         await productAPI.update(editingProduct.id || editingProduct._id, payload);
@@ -343,11 +518,12 @@ const SellerDashboard = () => {
         await productAPI.create(payload);
         toast.success("Product added");
       }
-      setShowModal(false);
+
+      closeProductModal();
       await fetchCategories();
       if (activeTab === "products") loadProductsData();
       else if (activeTab === "inventory") loadInventoryData();
-      else loadOverviewData();
+      else loadProductsData();
     } catch (e) {
       toast.error(e.response?.data?.message || "Failed to save product");
     }
@@ -360,7 +536,7 @@ const SellerDashboard = () => {
       toast.success("Product deleted");
       if (activeTab === "products") loadProductsData();
       else if (activeTab === "inventory") loadInventoryData();
-      else loadOverviewData();
+      else loadProductsData();
     } catch (e) {
       toast.error(e.response?.data?.message || "Delete failed");
     } finally {
@@ -372,8 +548,7 @@ const SellerDashboard = () => {
     try {
       await orderAPI.updateStatus(orderId, newStatus);
       toast.success(`Order status updated to ${newStatus}`);
-      if (activeTab === "orders") loadOrdersData();
-      else loadOverviewData();
+      loadOrdersData();
     } catch (e) {
       toast.error(e.response?.data?.message || "Status update failed");
     }
@@ -383,8 +558,7 @@ const SellerDashboard = () => {
     try {
       await orderAPI.updateReturnStatus(orderId, productId, status);
       toast.success(`Return request ${status === 'RETURN_APPROVED' ? 'approved' : 'rejected'} successfully`);
-      if (activeTab === "orders") loadOrdersData();
-      else loadOverviewData();
+      loadOrdersData();
       
       // Update the selected order view
       const updatedOrder = await orderAPI.getBySeller(user.id).then(res => res.data.find(o => o.id === orderId));
@@ -413,7 +587,7 @@ const SellerDashboard = () => {
       // Refresh products and dashboard data
       if (activeTab === "products") loadProductsData();
       else if (activeTab === "inventory") loadInventoryData();
-      else loadOverviewData();
+      else loadProductsData();
       toast.success("Profile updated & products synced");
       setIsEditing(false);
     } catch (e) {
@@ -466,14 +640,6 @@ const SellerDashboard = () => {
     }
   };
 
-  const addMediaRow = () => setForm({ ...form, media: [...form.media, { url: "", type: "image/jpeg", name: "" }] });
-  const removeMediaRow = (i) => setForm({ ...form, media: form.media.filter((_, idx) => idx !== i) });
-  const updateMedia = (i, field, val) => {
-    const updated = [...form.media];
-    updated[i] = { ...updated[i], [field]: val };
-    setForm({ ...form, media: updated });
-  };
-
   const toggleSize = (s) => {
     setForm({ ...form, sizes: form.sizes.includes(s) ? form.sizes.filter(x => x !== s) : [...form.sizes, s] });
   };
@@ -517,67 +683,54 @@ const SellerDashboard = () => {
   const formatDate = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-";
 
   // ============ REPORTS ============
-  const generatePDF = async () => {
-    try {
-      const res = await reportAPI.downloadSellerReport(user.id, "pdf");
-      const blob = new Blob([res.data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `seller_report_${user.id}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
-      toast.success("PDF downloaded from backend");
-    } catch (e) {
-      toast.error("Failed to download PDF report");
-    }
-  };
 
-  const generateExcel = async () => {
-    try {
-      const res = await reportAPI.downloadSellerReport(user.id, "excel");
-      const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `seller_report_${user.id}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
-      toast.success("Excel downloaded from backend");
-    } catch (e) {
-      toast.error("Failed to download Excel report");
+  const validateReportDates = (showToast = true) => {
+    if (!reportStartDate || !reportEndDate) {
+      if (showToast) {
+        toast.error("Please select start date and end date");
+      }
+      return false;
     }
-  };
 
-  const generateCSV = async () => {
-    try {
-      const res = await reportAPI.downloadSellerReport(user.id, "csv");
-      const blob = new Blob([res.data], { type: "text/csv" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `seller_report_${user.id}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
-      toast.success("CSV downloaded from backend");
-    } catch (e) {
-      toast.error("Failed to download CSV report");
+    if (new Date(reportStartDate) > new Date(reportEndDate)) {
+      if (showToast) {
+        toast.error("Start date cannot be after end date");
+      }
+      return false;
     }
+
+    return true;
   };
 
   const fetchReports = async () => {
     if (!user?.id) return;
+
+    if (!validateReportDates(false)) {
+      setReportSummary(null);
+      setReportTrend([]);
+      return;
+    }
+
     try {
       setLoadingReport(true);
+
       const [summaryRes, trendRes] = await Promise.all([
-        reportAPI.getSellerSummary(user.id, reportRange, reportStartDate, reportEndDate),
-        reportAPI.getSellerSalesTrend(user.id, reportRange, reportStartDate, reportEndDate)
+        reportAPI.getSellerSummary(
+          user.id,
+          reportRange,
+          reportStartDate,
+          reportEndDate
+        ),
+        reportAPI.getSellerSalesTrend(
+          user.id,
+          reportRange,
+          reportStartDate,
+          reportEndDate
+        ),
       ]);
+
       setReportSummary(summaryRes.data);
-      setReportTrend(trendRes.data);
+      setReportTrend(trendRes.data || []);
     } catch (err) {
       console.error("Failed to fetch reports", err);
       toast.error("Failed to load report data");
@@ -587,41 +740,85 @@ const SellerDashboard = () => {
   };
 
   useEffect(() => {
-    if (activeTab === "reports") {
-      fetchReports();
+    if (activeTab !== "reports") return;
+
+    if (reportStartDate && reportEndDate) {
+      if (new Date(reportStartDate) <= new Date(reportEndDate)) {
+        fetchReports();
+      } else {
+        setReportSummary(null);
+        setReportTrend([]);
+      }
+    } else {
+      setReportSummary(null);
+      setReportTrend([]);
     }
   }, [activeTab, reportRange, reportStartDate, reportEndDate, user?.id]);
 
   const handleDownloadPDF = async () => {
+    if (!validateReportDates(true)) return;
+
     try {
       toast.info("Generating PDF report...");
-      const res = await reportAPI.downloadSellerReport(user.id, "pdf", reportRange, reportStartDate, reportEndDate);
+
+      const res = await reportAPI.downloadSellerReport(
+        user.id,
+        "pdf",
+        reportRange,
+        reportStartDate,
+        reportEndDate
+      );
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
+
       link.href = url;
-      link.setAttribute("download", `seller_report_${user.id}_${reportRange}.pdf`);
+      link.setAttribute(
+        "download",
+        `seller_report_${user.id}_${reportRange}_${reportStartDate}_to_${reportEndDate}.pdf`
+      );
+
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
+
       toast.success("PDF downloaded successfully");
     } catch (err) {
+      console.error(err);
       toast.error("Failed to download PDF");
     }
   };
 
   const handleDownloadCSV = async () => {
+    if (!validateReportDates(true)) return;
+
     try {
       toast.info("Generating CSV report...");
-      const res = await reportAPI.downloadSellerReport(user.id, "csv", reportRange, reportStartDate, reportEndDate);
+
+      const res = await reportAPI.downloadSellerReport(
+        user.id,
+        "csv",
+        reportRange,
+        reportStartDate,
+        reportEndDate
+      );
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
+
       link.href = url;
-      link.setAttribute("download", `seller_report_${user.id}_${reportRange}.csv`);
+      link.setAttribute(
+        "download",
+        `seller_report_${user.id}_${reportRange}_${reportStartDate}_to_${reportEndDate}.csv`
+      );
+
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
+
       toast.success("CSV downloaded successfully");
     } catch (err) {
+      console.error(err);
       toast.error("Failed to download CSV");
     }
   };
@@ -636,81 +833,6 @@ const SellerDashboard = () => {
 
   return (
     <DashboardLayout tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab}>
-      {/* ============ DASHBOARD TAB ============ */}
-      {activeTab === "dashboard" && (
-        <div>
-          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "1.6rem", color: "var(--gold)", marginBottom: 24 }}>Dashboard Overview</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
-            {[
-              { label: "Revenue", value: formatCurrency(stats.revenue), color: "#d4af37", icon: <FiDollarSign /> },
-              { label: "Products", value: products.length, color: "#3b82f6", icon: <FiPackage /> },
-              { label: "Total Orders", value: stats.totalOrders || 0, color: "#22c55e", icon: <FiShoppingBag /> },
-              { label: "Items Sold", value: products.reduce((s, p) => s + (p.soldQuantity || 0), 0), color: "#8b5cf6", icon: <FiTrendingUp /> },
-              { label: "Pending Returns", value: orders.reduce((sum, o) => sum + (o.items?.filter(i => i.sellerId === user.id && i.returnStatus === "RETURN_REQUESTED").length || 0), 0), color: "#ef4444", icon: <FiAlertTriangle /> },
-              { label: "Refund Requests", value: stats.pendingRefunds || 0, color: "#ef4444", icon: <FiAlertTriangle /> },
-              { label: "Pending", value: stats.pending || 0, color: "#f59e0b", icon: <FiBox /> },
-              { label: "Low Stock", value: lowStockProducts.length, color: "#ef4444", icon: <FiAlertTriangle /> },
-              { label: "Average Rating", value: reviewStats ? `${reviewStats.averageRating.toFixed(1)} / 5.0` : "0.0 / 5.0", color: "#eab308", icon: <FiStar /> },
-              { label: "Total Reviews", value: reviewStats ? reviewStats.totalReviews : 0, color: "#eab308", icon: <FiMessageSquare /> },
-            ].map((c, i) => (
-              <div key={i} style={cardStyle(c.color)}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <span style={{ color: c.color, fontSize: 20 }}>{c.icon}</span>
-                  <span style={{ color: "#999", fontSize: 12, fontWeight: 500 }}>{c.label}</span>
-                </div>
-                <p style={{ fontSize: 26, fontWeight: 700, color: "#fff" }}>{c.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Recent Orders */}
-          <div style={{ ...cardStyle("#d4af37"), borderLeft: "none", marginBottom: 24 }}>
-            <h3 style={{ color: "var(--gold)", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Recent Orders</h3>
-            {recentOrders.length === 0 ? <p style={{ color: "#666" }}>No orders yet</p> : (
-              <table style={tableStyle}>
-                <thead><tr>
-                  <th style={thStyle}>Order ID</th><th style={thStyle}>Buyer</th><th style={thStyle}>Total</th><th style={thStyle}>Status</th>
-                </tr></thead>
-                <tbody>
-                  {recentOrders.map(o => (
-                    <tr key={o.id}>
-                      <td style={tdStyle}>{o.id?.slice(-8)}</td>
-                      <td style={tdStyle}>{o.fullName || o.userName}</td>
-                      <td style={tdStyle}>{formatCurrency(o.totalAmount)}</td>
-                      <td style={tdStyle}><StatusBadge status={o.orderStatus} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Top Selling & Low Stock side by side */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div style={{ ...cardStyle("#22c55e"), borderLeft: "none" }}>
-              <h3 style={{ color: "#22c55e", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Top Selling</h3>
-              {topSelling.map(p => (
-                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a1a1a", fontSize: 13 }}>
-                  <span style={{ color: "#ddd" }}>{p.name}</span>
-                  <span style={{ color: "#22c55e", fontWeight: 600 }}>{p.soldQuantity || 0} sold</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ ...cardStyle("#ef4444"), borderLeft: "none" }}>
-              <h3 style={{ color: "#ef4444", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Low Stock Alerts</h3>
-              {lowStockProducts.length === 0 ? <p style={{ color: "#666", fontSize: 13 }}>All stocked</p> :
-                lowStockProducts.slice(0, 5).map(p => (
-                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a1a1a", fontSize: 13 }}>
-                    <span style={{ color: "#ddd" }}>{p.name}</span>
-                    <span style={{ color: "#ef4444", fontWeight: 600 }}>{p.stock} left</span>
-                  </div>
-                ))
-              }
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ============ PRODUCTS TAB ============ */}
       {activeTab === "products" && (
         <div>
@@ -1033,11 +1155,53 @@ const SellerDashboard = () => {
             </div>
           </div>
 
-          <div style={{ padding: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8 }}>
-            <p style={{ color: "#22c55e", fontSize: 12, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <FiCheckCircle /> Razorpay Online Payment & COD metrics are fully integrated and synced with reports.
-            </p>
-          </div>
+        
+
+          {(!reportStartDate || !reportEndDate) && (
+            <div
+              style={{
+                padding: 14,
+                background: "rgba(245,158,11,0.1)",
+                border: "1px solid rgba(245,158,11,0.25)",
+                borderRadius: 8,
+              }}
+            >
+              <p
+                style={{
+                  color: "#f59e0b",
+                  fontSize: 13,
+                  margin: 0,
+                  fontWeight: 600,
+                }}
+              >
+                Please select start date and end date to generate report.
+              </p>
+            </div>
+          )}
+
+          {reportStartDate &&
+            reportEndDate &&
+            new Date(reportStartDate) > new Date(reportEndDate) && (
+              <div
+                style={{
+                  padding: 14,
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  borderRadius: 8,
+                }}
+              >
+                <p
+                  style={{
+                    color: "#ef4444",
+                    fontSize: 13,
+                    margin: 0,
+                    fontWeight: 600,
+                  }}
+                >
+                  Start date cannot be after end date.
+                </p>
+              </div>
+            )}
 
           {loadingReport ? (
             <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div className="w-8 h-8 border-2 border-[var(--gold)] border-t-transparent rounded-full animate-spin" /></div>
@@ -1370,163 +1534,373 @@ const SellerDashboard = () => {
 
       {/* ============ ADD/EDIT PRODUCT MODAL ============ */}
       {showModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "40px 16px", overflowY: "auto" }}>
-          <div style={{ background: "#111", borderRadius: 20, border: "1px solid rgba(212,175,55,0.2)", maxWidth: 700, width: "100%", padding: 32, position: "relative" }}>
-            <button onClick={() => setShowModal(false)} style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none", color: "#999", cursor: "pointer" }}><FiX size={24} /></button>
-            <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "1.4rem", color: "var(--gold)", marginBottom: 24 }}>
-              {editingProduct ? "Edit Product" : "Add New Product"}
-            </h2>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <div className="field"><label>Product Name *</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-gold" placeholder="Product name" /></div>
-              <div className="field"><label>Category *</label>
-                <select 
-                  value={form.category} 
-                  onChange={e => {
-                    setForm({ ...form, category: e.target.value });
-                    if (e.target.value !== "Others / Add New Category") setNewCategoryName("");
-                  }} 
-                  className="input-gold"
+        <div className="hc-product-modal-overlay">
+          <div className="hc-product-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="hc-product-modal-header">
+              <div className="hc-product-modal-title-wrap">
+                <button
+                  type="button"
+                  onClick={closeProductModal}
+                  className="hc-modal-back-btn"
                 >
-                  {categoriesList.map(c => <option key={c} value={c}>{c}</option>)}
-                  <option value="Others / Add New Category">Others / Add New Category</option>
-                </select>
+                  <FiArrowLeft size={15} />
+                  Back
+                </button>
+
+                <h2 className="hc-product-modal-title">
+                  {editingProduct ? "Edit Product" : "Add New Product"}
+                </h2>
               </div>
-              {form.category === "Others / Add New Category" && (
-                <div className="field" style={{ gridColumn: "span 2" }}>
-                  <label>New Category Name *</label>
-                  <input 
-                    value={newCategoryName} 
-                    onChange={e => setNewCategoryName(e.target.value)} 
-                    className="input-gold" 
-                    placeholder="Enter new category name" 
+
+              <button
+                type="button"
+                onClick={closeProductModal}
+                className="hc-modal-close-btn"
+                aria-label="Close product modal"
+              >
+                <FiX size={22} />
+              </button>
+            </div>
+
+            <div className="hc-product-modal-body">
+              <div className="hc-product-form-grid">
+                <div className="field">
+                  <label>Product Name *</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="input-gold"
+                    placeholder="Product name"
                   />
                 </div>
+
+                <div className="field">
+                  <label>Category *</label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => {
+                      setForm({ ...form, category: e.target.value });
+                      if (e.target.value !== "Others / Add New Category") {
+                        setNewCategoryName("");
+                      }
+                    }}
+                    className="input-gold"
+                  >
+                    {categoriesList.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                    <option value="Others / Add New Category">
+                      Others / Add New Category
+                    </option>
+                  </select>
+                </div>
+
+                {form.category === "Others / Add New Category" && (
+                  <div className="field hc-form-full">
+                    <label>New Category Name *</label>
+                    <input
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="input-gold"
+                      placeholder="Enter new category name"
+                    />
+                  </div>
+                )}
+
+                <div className="field">
+                  <label>Product Type</label>
+                  <input
+                    value={form.productType}
+                    onChange={(e) =>
+                      setForm({ ...form, productType: e.target.value })
+                    }
+                    className="input-gold"
+                    placeholder="e.g. Kurti, Saree"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Material</label>
+                  <input
+                    value={form.material}
+                    onChange={(e) => setForm({ ...form, material: e.target.value })}
+                    className="input-gold"
+                    placeholder="e.g. Cotton, Clay"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Price *</label>
+                  <input
+                    type="number"
+                    value={form.price}
+                    onChange={(e) => setForm({ ...form, price: e.target.value })}
+                    className="input-gold"
+                    placeholder="Selling price"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    MRP / Old Price{" "}
+                    {discount > 0 && (
+                      <span style={{ color: "#22c55e", fontSize: 12 }}>
+                        ({discount}% off)
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.oldPrice}
+                    onChange={(e) => setForm({ ...form, oldPrice: e.target.value })}
+                    className="input-gold"
+                    placeholder="Original price"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Stock *</label>
+                  <input
+                    type="number"
+                    value={form.stock}
+                    onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                    className="input-gold"
+                    placeholder="Available quantity"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Delivery Time</label>
+                  <input
+                    value={form.deliveryTime}
+                    onChange={(e) =>
+                      setForm({ ...form, deliveryTime: e.target.value })
+                    }
+                    className="input-gold"
+                    placeholder="e.g. 3-5 days"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Making Video Title</label>
+                  <input
+                    value={form.makingVideoTitle}
+                    onChange={(e) =>
+                      setForm({ ...form, makingVideoTitle: e.target.value })
+                    }
+                    className="input-gold"
+                    placeholder="e.g. Handmade weaving process"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Making Video URL</label>
+                  <input
+                    value={form.makingVideoUrl}
+                    onChange={(e) =>
+                      setForm({ ...form, makingVideoUrl: e.target.value })
+                    }
+                    className="input-gold"
+                    placeholder="YouTube or direct MP4 URL"
+                  />
+                </div>
+
+                <div className="field hc-form-full">
+                  <label>Product Images *</label>
+
+                  <div
+                    className="hc-upload-box"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <FiPlus size={22} />
+                    <div>
+                      <strong>Click to upload product images</strong>
+                      <p>PNG, JPG, JPEG, WEBP supported. Max 2MB each.</p>
+                    </div>
+                  </div>
+
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    multiple
+                    onChange={handleImageUpload}
+                    style={{ display: "none" }}
+                  />
+
+                  {imagePreviews.length > 0 && (
+                    <div className="hc-image-preview-grid">
+                      {imagePreviews.map((img, index) => (
+                        <div className="hc-image-preview-card" key={`${img.name}-${index}`}>
+                          <img src={img.url} alt={img.name || "Product preview"} />
+
+                          <button
+                            type="button"
+                            onClick={() => removeUploadedImage(index)}
+                            className="hc-remove-image-btn"
+                            aria-label="Remove image"
+                          >
+                            <FiX size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="field hc-form-full">
+                  <label>Description</label>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) =>
+                      setForm({ ...form, description: e.target.value })
+                    }
+                    className="input-gold"
+                    rows={3}
+                    placeholder="Product description"
+                  />
+                </div>
+
+                <div className="field hc-form-full">
+                  <label>Handmade Story</label>
+                  <textarea
+                    value={form.handmadeStory}
+                    onChange={(e) =>
+                      setForm({ ...form, handmadeStory: e.target.value })
+                    }
+                    className="input-gold"
+                    rows={2}
+                    placeholder="The story behind this product"
+                  />
+                </div>
+
+                <div className="field hc-form-full hc-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={form.featured}
+                    onChange={(e) =>
+                      setForm({ ...form, featured: e.target.checked })
+                    }
+                    id="featured-check"
+                  />
+                  <label htmlFor="featured-check">Featured Product</label>
+                </div>
+              </div>
+
+              {showSize && (
+                <div className="hc-option-section">
+                  <label>Available Sizes</label>
+                  <div className="hc-option-list">
+                    {ALL_SIZES.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => toggleSize(s)}
+                        className={form.sizes.includes(s) ? "hc-chip active" : "hc-chip"}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
-              <div className="field"><label>Product Type</label><input value={form.productType} onChange={e => setForm({ ...form, productType: e.target.value })} className="input-gold" placeholder="e.g. Kurti, Saree" /></div>
-              <div className="field"><label>Material</label><input value={form.material} onChange={e => setForm({ ...form, material: e.target.value })} className="input-gold" placeholder="e.g. Cotton, Clay" /></div>
-              <div className="field"><label>Price *</label><input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="input-gold" placeholder="Selling price" /></div>
-              <div className="field"><label>MRP / Old Price {discount > 0 && <span style={{ color: "#22c55e", fontSize: 12 }}>({discount}% off)</span>}</label><input type="number" value={form.oldPrice} onChange={e => setForm({ ...form, oldPrice: e.target.value })} className="input-gold" placeholder="Original price" /></div>
-              <div className="field"><label>Stock *</label><input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} className="input-gold" placeholder="Available quantity" /></div>
-              <div className="field"><label>Delivery Time</label><input value={form.deliveryTime} onChange={e => setForm({ ...form, deliveryTime: e.target.value })} className="input-gold" placeholder="e.g. 3-5 days" /></div>
-              <div className="field"><label>Making Video Title</label><input value={form.makingVideoTitle} onChange={e => setForm({ ...form, makingVideoTitle: e.target.value })} className="input-gold" placeholder="e.g. Handmade weaving process" /></div>
-              <div className="field"><label>Making Video URL</label><input value={form.makingVideoUrl} onChange={e => setForm({ ...form, makingVideoUrl: e.target.value })} className="input-gold" placeholder="YouTube or direct MP4 URL" /></div>
+
+              {showWeight && (
+                <div className="hc-option-section">
+                  <label>Available Weights</label>
+                  <div className="hc-option-list">
+                    {ALL_WEIGHTS.map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => toggleWeight(w)}
+                        className={form.weights.includes(w) ? "hc-chip active" : "hc-chip"}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {showLength && (
+                <div className="hc-option-section">
+                  <label>Available Lengths</label>
+                  <div className="hc-option-list">
+                    {ALL_LENGTHS.map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => toggleLength(l)}
+                        className={form.lengths.includes(l) ? "hc-chip active" : "hc-chip"}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {showVolume && (
+                <div className="hc-option-section">
+                  <label>Available Volumes</label>
+                  <div className="hc-option-list">
+                    {ALL_VOLUMES.map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => toggleVolume(v)}
+                        className={form.volumes.includes(v) ? "hc-chip active" : "hc-chip"}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {showQuantity && (
+                <div className="hc-option-section">
+                  <label>Available Quantity Options</label>
+                  <div className="hc-option-list">
+                    {ALL_QUANTITIES.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => toggleQuantity(q)}
+                        className={form.quantities.includes(q) ? "hc-chip active" : "hc-chip"}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="field" style={{ marginTop: 16 }}><label>Description</label><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-gold" rows={3} placeholder="Product description" /></div>
-            <div className="field"><label>Handmade Story</label><textarea value={form.handmadeStory} onChange={e => setForm({ ...form, handmadeStory: e.target.value })} className="input-gold" rows={2} placeholder="The story behind this product" /></div>
+            <div className="hc-product-modal-footer">
+              <button
+                type="button"
+                onClick={closeProductModal}
+                className="hc-cancel-btn"
+              >
+                Cancel
+              </button>
 
-            <div className="field" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input type="checkbox" checked={form.featured} onChange={e => setForm({ ...form, featured: e.target.checked })} id="featured-check" />
-              <label htmlFor="featured-check" style={{ margin: 0, cursor: "pointer" }}>Featured Product</label>
-            </div>
-
-            {/* Media URLs */}
-            <div style={{ marginTop: 16, marginBottom: 16 }}>
-              <label style={{ color: "#ccc", fontSize: 13, fontWeight: 500, marginBottom: 8, display: "block" }}>Image URLs</label>
-              {form.media.map((m, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                  <input value={m.url} onChange={e => updateMedia(i, "url", e.target.value)} className="input-gold" style={{ flex: 1 }} placeholder="Image URL" />
-                  {form.media.length > 1 && <button onClick={() => removeMediaRow(i)} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", color: "#ef4444" }}><FiX size={14} /></button>}
-                </div>
-              ))}
-              <button onClick={addMediaRow} style={{ background: "rgba(212,175,55,0.1)", border: "1px dashed rgba(212,175,55,0.3)", borderRadius: 8, padding: "8px 16px", cursor: "pointer", color: "#d4af37", fontSize: 13 }}>+ Add Image</button>
-            </div>
-
-            {/* Sizes */}
-            {showSize && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ color: "#ccc", fontSize: 13, fontWeight: 500, marginBottom: 8, display: "block" }}>Available Sizes</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {ALL_SIZES.map(s => (
-                    <button key={s} type="button" onClick={() => toggleSize(s)} style={{
-                      padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                      background: form.sizes.includes(s) ? "rgba(212,175,55,0.2)" : "#1a1a1a",
-                      border: form.sizes.includes(s) ? "1px solid #d4af37" : "1px solid #333",
-                      color: form.sizes.includes(s) ? "#d4af37" : "#999",
-                    }}>{s}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Weights */}
-            {showWeight && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ color: "#ccc", fontSize: 13, fontWeight: 500, marginBottom: 8, display: "block" }}>Available Weights</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {ALL_WEIGHTS.map(w => (
-                    <button key={w} type="button" onClick={() => toggleWeight(w)} style={{
-                      padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                      background: form.weights.includes(w) ? "rgba(212,175,55,0.2)" : "#1a1a1a",
-                      border: form.weights.includes(w) ? "1px solid #d4af37" : "1px solid #333",
-                      color: form.weights.includes(w) ? "#d4af37" : "#999",
-                    }}>{w}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Lengths */}
-            {showLength && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ color: "#ccc", fontSize: 13, fontWeight: 500, marginBottom: 8, display: "block" }}>Available Lengths</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {ALL_LENGTHS.map(l => (
-                    <button key={l} type="button" onClick={() => toggleLength(l)} style={{
-                      padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                      background: form.lengths.includes(l) ? "rgba(212,175,55,0.2)" : "#1a1a1a",
-                      border: form.lengths.includes(l) ? "1px solid #d4af37" : "1px solid #333",
-                      color: form.lengths.includes(l) ? "#d4af37" : "#999",
-                    }}>{l}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Volumes */}
-            {showVolume && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ color: "#ccc", fontSize: 13, fontWeight: 500, marginBottom: 8, display: "block" }}>Available Volumes</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {ALL_VOLUMES.map(v => (
-                    <button key={v} type="button" onClick={() => toggleVolume(v)} style={{
-                      padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                      background: form.volumes.includes(v) ? "rgba(212,175,55,0.2)" : "#1a1a1a",
-                      border: form.volumes.includes(v) ? "1px solid #d4af37" : "1px solid #333",
-                      color: form.volumes.includes(v) ? "#d4af37" : "#999",
-                    }}>{v}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Quantities */}
-            {showQuantity && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ color: "#ccc", fontSize: 13, fontWeight: 500, marginBottom: 8, display: "block" }}>Available Quantity Options</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {ALL_QUANTITIES.map(q => (
-                    <button key={q} type="button" onClick={() => toggleQuantity(q)} style={{
-                      padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                      background: form.quantities.includes(q) ? "rgba(212,175,55,0.2)" : "#1a1a1a",
-                      border: form.quantities.includes(q) ? "1px solid #d4af37" : "1px solid #333",
-                      color: form.quantities.includes(q) ? "#d4af37" : "#999",
-                    }}>{q}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
-              <button onClick={handleSave} className="btn-gold" style={{ flex: 1, padding: "12px" }}>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="btn-gold hc-save-product-btn"
+              >
                 {editingProduct ? "Update Product" : "Add Product"}
               </button>
-              <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: "12px", background: "#1a1a1a", border: "1px solid #333", borderRadius: 8, color: "#999", cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
+
       {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={!!confirmDeleteProduct}

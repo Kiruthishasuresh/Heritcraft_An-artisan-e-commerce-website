@@ -4,7 +4,6 @@ import com.heritcraft.userservice.dto.ProfileUpdateRequest;
 import com.heritcraft.userservice.dto.UserResponse;
 import com.heritcraft.userservice.dto.ChangePasswordRequest;
 import com.heritcraft.userservice.service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -26,7 +25,6 @@ public class UserController {
 
     private final UserService userService;
 
-    @Autowired
     public UserController(UserService userService) {
         this.userService = userService;
     }

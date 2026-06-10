@@ -25,6 +25,8 @@ public class UserResponse {
     private String profileImage;
     private boolean approved;
     private boolean active;
+    private boolean phoneVerified;
+    private LocalDateTime phoneVerifiedAt;
     private LocalDateTime createdAt;
 
     /**
@@ -38,4 +40,5 @@ public class UserResponse {
      * Null otherwise (excluded from JSON by @JsonInclude).
      */
     private Boolean pendingApproval;
+    private Boolean phoneVerificationRequired;
 }

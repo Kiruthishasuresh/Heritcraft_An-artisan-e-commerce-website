@@ -40,7 +40,19 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/verify-otp", "/api/auth/reset-password").permitAll()
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/register",
+                                "/api/auth/public-key",
+                                "/api/auth/forgot-password",
+                                "/api/auth/verify-otp",
+                                "/api/auth/reset-password",
+                                "/api/auth/phone-otp/send",
+                                "/api/auth/phone-otp/verify",
+                                "/api/auth/send-signup-mobile-otp",
+                                "/api/auth/verify-signup-mobile-otp",
+                                "/api/auth/resend-signup-mobile-otp"
+                        ).permitAll()
                         .requestMatchers("/api/users/approved-sellers").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/users/**").authenticated()

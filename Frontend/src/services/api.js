@@ -5,10 +5,10 @@ const API = axios.create({
 });
 
 /**
- * Request interceptor — attach JWT Bearer token to every request.
+ * Request interceptor — attach JWT Bearer token from sessionStorage.
  */
 API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("heritcraft_token");
+  const token = sessionStorage.getItem("heritcraft_token");
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -18,7 +18,7 @@ API.interceptors.request.use((config) => {
 });
 
 /**
- * Response interceptor — auto-logout on 401 (expired/invalid token).
+ * Response interceptor — auto-logout on 401.
  */
 API.interceptors.response.use(
   (response) => response,
@@ -26,16 +26,21 @@ API.interceptors.response.use(
     if (error.response?.status === 401) {
       const path = error.config?.url || "";
 
-      // Don't clear on login/register failures — those are auth errors, not token expiry
+      // Don't clear on login/register failures
       if (!path.includes("/auth/login") && !path.includes("/auth/register")) {
+        sessionStorage.removeItem("heritcraft_token");
+        sessionStorage.removeItem("heritcraft_user");
+
+        // Clear old persistent auth data if present
         localStorage.removeItem("heritcraft_token");
         localStorage.removeItem("heritcraft_user");
-        // Redirect to home if not already there
+
         if (window.location.pathname !== "/") {
           window.location.href = "/";
         }
       }
     }
+
     return Promise.reject(error);
   }
 );
@@ -47,7 +52,18 @@ export const authAPI = {
   getMe: () => API.get("/auth/me"),
   forgotPassword: (email) => API.post("/auth/forgot-password", { email }),
   verifyOtp: (email, otp) => API.post("/auth/verify-otp", { email, otp }),
-  resetPassword: (email, otp, newPassword) => API.post("/auth/reset-password", { email, otp, newPassword }),
+  resetPassword: (email, otp, newPassword) =>
+    API.post("/auth/reset-password", { email, otp, newPassword }),
+  verifyPhoneOtp: (phone, otp) =>
+    API.post("/auth/phone-otp/verify", { phone, otp }),
+  sendPhoneOtp: (phone) =>
+    API.post("/auth/phone-otp/send", { phone }),
+  sendSignupMobileOtp: (data) =>
+    API.post("/auth/phone-otp/send", data),
+  verifySignupMobileOtp: (data) =>
+    API.post("/auth/phone-otp/verify", data),
+  resendSignupMobileOtp: (data) =>
+    API.post("/auth/phone-otp/send", data),
 };
 
 export const userAPI = {
@@ -70,7 +86,8 @@ export const productAPI = {
   getOne: (id) => API.get(`/products/${id}`),
   getBySeller: (sellerId) => API.get(`/products/seller/${sellerId}`),
   getFeatured: () => API.get("/products/featured"),
-  search: (query) => API.get(`/products/search?q=${encodeURIComponent(query || "")}`),
+  search: (query) =>
+    API.get(`/products/search?q=${encodeURIComponent(query || "")}`),
   getCategories: () => API.get("/products/categories"),
   create: (data) => API.post("/products", data),
   update: (id, data) => API.put(`/products/${id}`, data),
@@ -93,10 +110,16 @@ export const orderAPI = {
   getSellerStats: (sellerId) => API.get(`/orders/seller/${sellerId}/stats`),
   getAdminStats: () => API.get("/orders/admin/stats"),
   delete: (id) => API.delete(`/orders/${id}`),
-  requestReturn: (id, productId, data) => API.put(`/orders/${id}/items/${productId}/return`, data),
-  updateReturnStatus: (id, productId, status) => API.put(`/orders/${id}/items/${productId}/return-status`, { status }),
-  requestRefund: (orderId, data) => API.put(`/orders/${orderId}/refund-request`, data),
-  getSellerRefundRequests: (sellerId) => API.get(`/orders/seller/${sellerId}/refund-requests`),
+
+  requestReturn: (id, productId, data) =>
+    API.put(`/orders/${id}/items/${productId}/return`, data),
+  updateReturnStatus: (id, productId, status) =>
+    API.put(`/orders/${id}/items/${productId}/return-status`, { status }),
+
+  requestRefund: (orderId, data) =>
+    API.put(`/orders/${orderId}/refund-request`, data),
+  getSellerRefundRequests: (sellerId) =>
+    API.get(`/orders/seller/${sellerId}/refund-requests`),
   getAdminRefundRequests: () => API.get("/orders/admin/refund-requests"),
   approveRefund: (orderId) => API.put(`/orders/${orderId}/refund/approve`),
   rejectRefund: (orderId) => API.put(`/orders/${orderId}/refund/reject`),
@@ -108,14 +131,18 @@ export const reviewAPI = {
   getByBuyer: (buyerId) => API.get(`/reviews/buyer/${buyerId}`),
   getBySeller: (sellerId) => API.get(`/reviews/seller/${sellerId}`),
   getSellerStats: (sellerId) => API.get(`/reviews/seller/${sellerId}/stats`),
-  replyAsSeller: (reviewId, data) => API.post(`/reviews/${reviewId}/seller-reply`, data),
-  reportReview: (reviewId, data) => API.post(`/reviews/${reviewId}/report`, data),
+  replyAsSeller: (reviewId, data) =>
+    API.post(`/reviews/${reviewId}/seller-reply`, data),
+  reportReview: (reviewId, data) =>
+    API.post(`/reviews/${reviewId}/report`, data),
   getAllForAdmin: () => API.get("/reviews/admin/all"),
   getAdminStats: () => API.get("/reviews/admin/stats"),
-  updateReviewStatus: (reviewId, data) => API.put(`/reviews/admin/${reviewId}/status`, data),
+  updateReviewStatus: (reviewId, data) =>
+    API.put(`/reviews/admin/${reviewId}/status`, data),
   deleteReview: (reviewId) => API.delete(`/reviews/admin/${reviewId}`),
   restoreReview: (reviewId) => API.put(`/reviews/admin/${reviewId}/restore`),
 };
+
 export const cartAPI = {
   get: () => API.get("/cart"),
   add: (data) => API.post("/cart/add", data),
@@ -125,45 +152,6 @@ export const cartAPI = {
   merge: (items) => API.post("/cart/merge", items),
 };
 
-export const adminAPI = {};
-export const reportAPI = {
-  getSellerSummary: (sellerId, range, startDate, endDate) => {
-    let url = `/reports/seller/${sellerId}/summary?range=${range || 'daily'}`;
-    if (startDate) url += `&startDate=${startDate}`;
-    if (endDate) url += `&endDate=${endDate}`;
-    return API.get(url);
-  },
-  getSellerSalesTrend: (sellerId, range, startDate, endDate) => {
-    let url = `/reports/seller/${sellerId}/sales-trend?range=${range || 'daily'}`;
-    if (startDate) url += `&startDate=${startDate}`;
-    if (endDate) url += `&endDate=${endDate}`;
-    return API.get(url);
-  },
-  downloadSellerReport: (sellerId, format, range, startDate, endDate) => {
-    let url = `/reports/seller/${sellerId}/export?format=${format}&range=${range || 'daily'}`;
-    if (startDate) url += `&startDate=${startDate}`;
-    if (endDate) url += `&endDate=${endDate}`;
-    return API.get(url, { responseType: "blob" });
-  },
-  getAdminSummary: (range, startDate, endDate) => {
-    let url = `/reports/admin/summary?range=${range || 'daily'}`;
-    if (startDate) url += `&startDate=${startDate}`;
-    if (endDate) url += `&endDate=${endDate}`;
-    return API.get(url);
-  },
-  getAdminSalesTrend: (range, startDate, endDate) => {
-    let url = `/reports/admin/sales-trend?range=${range || 'daily'}`;
-    if (startDate) url += `&startDate=${startDate}`;
-    if (endDate) url += `&endDate=${endDate}`;
-    return API.get(url);
-  },
-  downloadAdminReport: (format, range, startDate, endDate) => {
-    let url = `/reports/admin/export?format=${format}&range=${range || 'daily'}`;
-    if (startDate) url += `&startDate=${startDate}`;
-    if (endDate) url += `&endDate=${endDate}`;
-    return API.get(url, { responseType: "blob" });
-  },
-};
 export const wishlistAPI = {
   get: () => API.get("/wishlist"),
   add: (productId) => API.post("/wishlist/add", { productId }),
@@ -172,9 +160,61 @@ export const wishlistAPI = {
   merge: (productIds) => API.post("/wishlist/merge", productIds),
 };
 
+export const reportAPI = {
+  getSellerSummary: (sellerId, range, startDate, endDate) => {
+    let url = `/reports/seller/${sellerId}/summary?range=${range || "daily"}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return API.get(url);
+  },
+
+  getSellerSalesTrend: (sellerId, range, startDate, endDate) => {
+    let url = `/reports/seller/${sellerId}/sales-trend?range=${
+      range || "daily"
+    }`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return API.get(url);
+  },
+
+  downloadSellerReport: (sellerId, format, range, startDate, endDate) => {
+    let url = `/reports/seller/${sellerId}/export?format=${format}&range=${
+      range || "daily"
+    }`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return API.get(url, { responseType: "blob" });
+  },
+
+  getAdminSummary: (range, startDate, endDate) => {
+    let url = `/reports/admin/summary?range=${range || "daily"}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return API.get(url);
+  },
+
+  getAdminSalesTrend: (range, startDate, endDate) => {
+    let url = `/reports/admin/sales-trend?range=${range || "daily"}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return API.get(url);
+  },
+
+  downloadAdminReport: (format, range, startDate, endDate) => {
+    let url = `/reports/admin/export?format=${format}&range=${
+      range || "daily"
+    }`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return API.get(url, { responseType: "blob" });
+  },
+};
+
 export const paymentAPI = {
   createOrder: (data) => API.post("/payments/create-order", data),
   verifyPayment: (data) => API.post("/payments/verify", data),
 };
+
+export const adminAPI = {};
 
 export default API;

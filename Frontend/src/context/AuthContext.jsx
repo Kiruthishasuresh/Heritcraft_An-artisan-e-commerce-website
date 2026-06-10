@@ -7,12 +7,16 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem("heritcraft_token"));
+  const [token, setToken] = useState(sessionStorage.getItem("heritcraft_token"));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const validateSession = async () => {
-      const savedToken = localStorage.getItem("heritcraft_token");
+      // Remove old persistent login data from previous localStorage version
+      localStorage.removeItem("heritcraft_token");
+      localStorage.removeItem("heritcraft_user");
+
+      const savedToken = sessionStorage.getItem("heritcraft_token");
 
       if (!savedToken) {
         setLoading(false);
@@ -25,10 +29,13 @@ export const AuthProvider = ({ children }) => {
 
         setUser(userData);
         setToken(savedToken);
-        localStorage.setItem("heritcraft_user", JSON.stringify(userData));
+        sessionStorage.setItem("heritcraft_user", JSON.stringify(userData));
       } catch (error) {
+        sessionStorage.removeItem("heritcraft_token");
+        sessionStorage.removeItem("heritcraft_user");
         localStorage.removeItem("heritcraft_token");
         localStorage.removeItem("heritcraft_user");
+
         setToken(null);
         setUser(null);
       } finally {
@@ -37,30 +44,40 @@ export const AuthProvider = ({ children }) => {
     };
 
     validateSession();
+
     // Pre-load public key in the background
     initEncryption(authAPI.getPublicKey);
   }, []);
 
   /**
-   * Login — stores JWT and user data, returns result.
+   * Login — stores JWT and user data in sessionStorage.
    * Does NOT redirect — caller handles navigation.
    */
   const login = async (email, password) => {
     try {
       await initEncryption(authAPI.getPublicKey);
       const encPassword = encryptPassword(password);
-      
+
       const response = await authAPI.login({ email, password: encPassword });
       const data = response.data;
+
+      if (data.phoneVerificationRequired) {
+        return data;
+      }
 
       if (!data.token) {
         throw new Error("No token received from server");
       }
 
-      localStorage.setItem("heritcraft_token", data.token);
-      localStorage.setItem("heritcraft_user", JSON.stringify(data));
+      // Store login session only in sessionStorage
+      sessionStorage.setItem("heritcraft_token", data.token);
+      sessionStorage.setItem("heritcraft_user", JSON.stringify(data));
 
-      // Save to recent accounts
+      // Remove old persistent login data
+      localStorage.removeItem("heritcraft_token");
+      localStorage.removeItem("heritcraft_user");
+
+      // Save safe recent account data only
       saveRecentAccount(data);
 
       setToken(data.token);
@@ -71,53 +88,42 @@ export const AuthProvider = ({ children }) => {
         user: data,
       };
     } catch (error) {
-      throw new Error(error.response?.data?.message || error.message || "Login failed");
+      throw new Error(
+        error.response?.data?.message || error.message || "Login failed"
+      );
     }
   };
 
   /**
-   * Register — stores JWT and user data for non-seller signups.
+   * Register — stores JWT and user data in sessionStorage for non-seller signups.
    * Seller registration returns pendingApproval without token.
    */
   const register = async (formData) => {
     try {
       await initEncryption(authAPI.getPublicKey);
       const encPassword = encryptPassword(formData.password);
-      
+
       const secureData = { ...formData, password: encPassword };
       const response = await authAPI.register(secureData);
       const data = response.data;
 
-      if (data.pendingApproval || (formData.role === "seller" && !data.token)) {
-        return {
-          token: null,
-          user: data,
-          pendingApproval: true,
-        };
-      }
-
-      if (!data.token) {
-        throw new Error("No token received from server");
-      }
-
-      localStorage.setItem("heritcraft_token", data.token);
-      localStorage.setItem("heritcraft_user", JSON.stringify(data));
-
-      saveRecentAccount(data);
-
-      setToken(data.token);
-      setUser(data);
-
       return {
-        token: data.token,
+        token: null,
         user: data,
       };
     } catch (error) {
-      throw new Error(error.response?.data?.message || error.message || "Registration failed");
+      throw new Error(
+        error.response?.data?.message || error.message || "Registration failed"
+      );
     }
   };
 
   const logout = () => {
+    // Clear current session
+    sessionStorage.removeItem("heritcraft_token");
+    sessionStorage.removeItem("heritcraft_user");
+
+    // Clear old persistent auth data if present
     localStorage.removeItem("heritcraft_token");
     localStorage.removeItem("heritcraft_user");
 
@@ -127,34 +133,52 @@ export const AuthProvider = ({ children }) => {
 
   const updateUser = (updatedUser) => {
     setUser(updatedUser);
-    localStorage.setItem("heritcraft_user", JSON.stringify(updatedUser));
+    sessionStorage.setItem("heritcraft_user", JSON.stringify(updatedUser));
   };
 
   /**
-   * Get recent accounts from localStorage.
+   * Get recent accounts from sessionStorage.
+   * Cleans old unsafe password fields if present.
    */
   const getRecentAccounts = () => {
     try {
-      const saved = localStorage.getItem("heritcraft_recent_accounts");
-      return saved ? JSON.parse(saved) : [];
+      const saved = sessionStorage.getItem("heritcraft_recent_accounts");
+      const accounts = saved ? JSON.parse(saved) : [];
+
+      const cleanedAccounts = accounts.map((account) => ({
+        name: account.name,
+        email: account.email,
+        role: account.role,
+      }));
+
+      sessionStorage.setItem(
+        "heritcraft_recent_accounts",
+        JSON.stringify(cleanedAccounts)
+      );
+
+      return cleanedAccounts;
     } catch {
+      sessionStorage.removeItem("heritcraft_recent_accounts");
       return [];
     }
   };
 
   /**
-   * Save account to recent accounts list (max 5).
+   * Save account to recent accounts list.
+   * Never stores password.
    */
   const saveRecentAccount = (userData) => {
     try {
       const accounts = getRecentAccounts();
       const filtered = accounts.filter((a) => a.email !== userData.email);
+
       filtered.unshift({
         name: userData.name,
         email: userData.email,
         role: userData.role,
       });
-      localStorage.setItem(
+
+      sessionStorage.setItem(
         "heritcraft_recent_accounts",
         JSON.stringify(filtered.slice(0, 5))
       );
@@ -170,7 +194,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const accounts = getRecentAccounts();
       const filtered = accounts.filter((a) => a.email !== email);
-      localStorage.setItem(
+
+      sessionStorage.setItem(
         "heritcraft_recent_accounts",
         JSON.stringify(filtered)
       );

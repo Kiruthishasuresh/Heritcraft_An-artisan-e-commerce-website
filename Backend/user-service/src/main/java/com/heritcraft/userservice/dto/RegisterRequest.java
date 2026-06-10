@@ -28,5 +28,10 @@ public class RegisterRequest {
 
     private String shopName;
     private String shopDescription;
+
+    @NotBlank(message = "Phone number is required")
+    @jakarta.validation.constraints.Pattern(regexp = "^\\d{10}$", message = "Phone number must be exactly 10 digits")
     private String phone;
+
+    private String address;
 }

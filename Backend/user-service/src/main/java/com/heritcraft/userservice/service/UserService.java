@@ -8,9 +8,9 @@ import com.heritcraft.userservice.dto.ChangePasswordRequest;
 import com.heritcraft.userservice.entity.User;
 import com.heritcraft.userservice.repository.UserRepository;
 import com.heritcraft.userservice.security.JwtUtil;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -21,28 +21,37 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final PasswordCryptoService cryptoService;
+    private final OtpService otpService;
 
-    @Autowired
     public UserService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtUtil jwtUtil,
-            PasswordCryptoService cryptoService
+            PasswordCryptoService cryptoService,
+            OtpService otpService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.cryptoService = cryptoService;
+        this.otpService = otpService;
     }
 
     /**
      * Register a new user with BCrypt-hashed password.
-     * Returns UserResponse with JWT token.
-     * Sellers get pendingApproval flag — no token until approved.
+     * Returns UserResponse without token (since we require OTP verification first).
      */
     public UserResponse register(RegisterRequest request) {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             throw new RuntimeException("Email already exists");
+        }
+        if (userRepository.phoneExists(request.getPhone())) {
+            throw new RuntimeException("Phone number already exists");
+        }
+
+        // Enforce OTP verification before registration
+        if (!otpService.isPhoneVerified(request.getPhone())) {
+            throw new RuntimeException("Mobile number verification is required before signing up.");
         }
 
         User user = new User();
@@ -60,39 +69,34 @@ public class UserService {
 
         String role = request.getRole().toLowerCase();
         user.setRole(role);
+        user.setPhone(request.getPhone());
+        user.setPhoneVerified(true);
+        user.setPhoneVerifiedAt(LocalDateTime.now());
+
+        user.setActive(true);
 
         if ("seller".equals(role)) {
+            if (request.getAddress() == null || request.getAddress().trim().isEmpty()) {
+                throw new RuntimeException("Seller address is required");
+            }
             user.setShopName(request.getShopName());
             user.setShopDescription(request.getShopDescription());
+            user.setAddress(request.getAddress());
             user.setApproved(false);
         } else {
             user.setApproved(true);
         }
 
-        user.setActive(true);
-
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone());
-        }
-
         User savedUser = userRepository.save(user);
 
-        // Sellers pending approval: return response without token
-        if ("seller".equals(role) && !savedUser.isApproved()) {
-            UserResponse resp = mapToResponse(savedUser, null);
-            resp.setPendingApproval(true);
-            return resp;
-        }
+        // Mark OTP as used
+        otpService.markPhoneOtpAsUsed(savedUser.getPhone());
 
-        // Generate JWT token for immediate login after registration
-        String token = jwtUtil.generateToken(savedUser);
-
-        return mapToResponse(savedUser, token);
+        return mapToResponse(savedUser, null);
     }
 
     /**
      * Login with BCrypt password verification.
-     * Returns UserResponse with JWT token.
      */
     public UserResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
@@ -109,17 +113,62 @@ public class UserService {
             throw new RuntimeException("Invalid email or password");
         }
 
-        if (!user.isActive()) {
-            throw new RuntimeException("User account is disabled. Contact administrator.");
+        // Handle unverified mobile
+        if (!Boolean.TRUE.equals(user.getPhoneVerified())) {
+            otpService.generateAndSendSignupOtp(user.getPhone());
+            UserResponse resp = mapToResponse(user, null);
+            resp.setPhone(user.getPhone());
+            resp.setPhoneVerificationRequired(true);
+            return resp;
         }
 
-        // Allow seller login even if not approved — they see restricted dashboard
-        // but don't generate an error that blocks them entirely
+        // Handle pending seller approval
+        if ("seller".equalsIgnoreCase(user.getRole()) && !Boolean.TRUE.equals(user.getApproved())) {
+            throw new RuntimeException("Seller account is pending admin approval.");
+        }
+
+        if (!Boolean.TRUE.equals(user.getActive())) {
+            throw new RuntimeException("User account is disabled. Contact administrator.");
+        }
 
         // Generate JWT token
         String token = jwtUtil.generateToken(user);
 
         return mapToResponse(user, token);
+    }
+
+    public void sendPhoneOtp(String phone) {
+        if (phone == null || !phone.matches("\\d{10}")) {
+            throw new RuntimeException("Mobile number must be exactly 10 digits");
+        }
+
+        java.util.Optional<User> existingUser = userRepository.findByPhone(phone);
+        if (existingUser.isPresent() && Boolean.TRUE.equals(existingUser.get().getPhoneVerified())) {
+            throw new RuntimeException("Phone number already exists and is verified");
+        }
+
+        otpService.generateAndSendSignupOtp(phone);
+    }
+
+    public boolean verifyPhoneOtp(String phone, String otp) {
+        boolean isValid = otpService.verifySignupOtp(phone, otp);
+        if (isValid) {
+            java.util.Optional<User> existingUser = userRepository.findByPhone(phone);
+            if (existingUser.isPresent()) {
+                User user = existingUser.get();
+                user.setPhoneVerified(true);
+                user.setPhoneVerifiedAt(LocalDateTime.now());
+                if ("seller".equalsIgnoreCase(user.getRole())) {
+                    user.setActive(Boolean.TRUE.equals(user.getApproved()));
+                } else {
+                    user.setActive(true);
+                }
+                userRepository.save(user);
+                otpService.markPhoneOtpAsUsed(phone);
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -200,7 +249,7 @@ public class UserService {
      */
     public List<UserResponse> getPendingSellers() {
         return userRepository.findByRole("seller").stream()
-                .filter(u -> !u.isApproved())
+                .filter(u -> !Boolean.TRUE.equals(u.getApproved()))
                 .map(u -> mapToResponse(u, null))
                 .collect(Collectors.toList());
     }
@@ -325,7 +374,7 @@ public class UserService {
 
     public List<Long> getApprovedSellerIds() {
         return userRepository.findByRole("seller").stream()
-                .filter(User::isApproved)
+                .filter(u -> Boolean.TRUE.equals(u.getApproved()))
                 .map(User::getId)
                 .collect(Collectors.toList());
     }
@@ -354,8 +403,10 @@ public class UserService {
         response.setState(user.getState());
         response.setZip(user.getZip());
         response.setProfileImage(user.getProfileImage());
-        response.setApproved(user.isApproved());
-        response.setActive(user.isActive());
+        response.setApproved(Boolean.TRUE.equals(user.getApproved()));
+        response.setActive(Boolean.TRUE.equals(user.getActive()));
+        response.setPhoneVerified(Boolean.TRUE.equals(user.getPhoneVerified()));
+        response.setPhoneVerifiedAt(user.getPhoneVerifiedAt());
         response.setCreatedAt(user.getCreatedAt());
         response.setToken(token); // null unless login/register
         return response;

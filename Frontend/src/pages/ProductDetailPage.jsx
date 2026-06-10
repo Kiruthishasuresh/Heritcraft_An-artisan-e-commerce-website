@@ -8,6 +8,7 @@ import ProductCard from "../components/ProductCard";
 import ReviewCard from "../components/reviews/ReviewCard";
 import { FiShoppingCart, FiStar, FiTruck, FiShield, FiPackage, FiUser, FiMinus, FiPlus, FiChevronLeft, FiHeart } from "react-icons/fi";
 import { useWishlist } from "../context/WishlistContext";
+import BackButton from "../components/common/BackButton";
 
 const sizePriceMap = { XS: 0.9, S: 0.95, M: 1, L: 1.1, XL: 1.2, XXL: 1.35, "Free Size": 1 };
 const weightPriceMap = { "100g": 1, "250g": 2.5, "500g": 4.5, "1kg": 8, "2kg": 13 };
@@ -244,9 +245,9 @@ const ProductDetailPage = () => {
 
   return (
     <div className="page-wrap" style={{ paddingTop: 24, paddingBottom: 60 }}>
-      <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginBottom: 20, fontSize: 14 }}>
-        <FiChevronLeft /> Back
-      </button>
+      <div style={{ marginBottom: 18 }}>
+        <BackButton fallback="/products" label="Back to Products" />
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, marginBottom: 48 }} className="product-detail-grid">
         {/* LEFT — Images */}

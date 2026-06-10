@@ -11,7 +11,7 @@ export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
   const recentToastsRef = useRef(new Map());
 
-  const addToast = useCallback((message, type = "info", duration = 3000) => {
+  const addToast = useCallback((message, type = "info", duration = 1000) => {
     if (!message) return;
 
     const key = `${type}:${message}`;
@@ -19,7 +19,7 @@ export const ToastProvider = ({ children }) => {
     const lastShown = recentToastsRef.current.get(key);
 
     // Prevent the same toast from repeating too quickly
-    if (lastShown && now - lastShown < 2000) {
+    if (lastShown && now - lastShown < 1000) {
       return;
     }
 

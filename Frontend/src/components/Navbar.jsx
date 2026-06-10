@@ -15,6 +15,7 @@ import {
   FiSettings,
   FiChevronDown,
   FiHeart,
+  FiShoppingBag,
 } from "react-icons/fi";
 
 import AuthModal from "./AuthModal";
@@ -36,10 +37,6 @@ const Navbar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  /**
-   * Handles checkout guest redirect:
-   * Shows login modal + toast only once, then clears router state.
-   */
   useEffect(() => {
     if (location.state?.openLogin && !user && !handledLoginPromptRef.current) {
       handledLoginPromptRef.current = true;
@@ -68,9 +65,6 @@ const Navbar = () => {
     info,
   ]);
 
-  /**
-   * Close profile dropdown on outside click.
-   */
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -87,9 +81,6 @@ const Navbar = () => {
     };
   }, [showUserMenu]);
 
-  /**
-   * Close profile dropdown on Escape key.
-   */
   useEffect(() => {
     const handleEsc = (event) => {
       if (event.key === "Escape") {
@@ -111,10 +102,21 @@ const Navbar = () => {
       ? "/admin"
       : user?.role === "seller"
       ? "/seller"
-      : "/buyer";
+      : "/buyer?tab=orders";
 
-  const profilePath = `${dashboardPath}?tab=profile`;
-  const settingsPath = `${dashboardPath}?tab=settings`;
+  const profilePath =
+    user?.role === "admin"
+      ? "/admin?tab=profile"
+      : user?.role === "seller"
+      ? "/seller?tab=profile"
+      : "/buyer?tab=profile";
+
+  const settingsPath =
+    user?.role === "admin"
+      ? "/admin?tab=settings"
+      : user?.role === "seller"
+      ? "/seller?tab=settings"
+      : "/buyer?tab=settings";
 
   const closeMenus = () => {
     setShowUserMenu(false);
@@ -159,7 +161,6 @@ const Navbar = () => {
   return (
     <>
       <nav className="navbar">
-        {/* LOGO */}
         <Link
           to={
             user?.role === "seller"
@@ -175,7 +176,6 @@ const Navbar = () => {
           <p className="logo-sub">Where Heritage Meets Creativity</p>
         </Link>
 
-        {/* SEARCH */}
         {(!user || user.role === "buyer") && (
           <form className="search-bar" onSubmit={handleSearch}>
             <input
@@ -191,7 +191,6 @@ const Navbar = () => {
           </form>
         )}
 
-        {/* DESKTOP NAV */}
         <div className="nav-links hidden lg:flex">
           {(!user || user.role === "buyer") && (
             <>
@@ -330,7 +329,6 @@ const Navbar = () => {
                     animation: "dropdownSlideIn 0.2s ease",
                   }}
                 >
-                  {/* USER CARD */}
                   <div
                     style={{
                       padding: "18px 18px 14px",
@@ -419,14 +417,23 @@ const Navbar = () => {
                     </div>
                   </div>
 
-                  {/* MENU ITEMS */}
                   <div style={{ padding: "6px 0" }}>
                     {[
                       {
-                        icon: <FiGrid size={15} />,
-                        label: "Dashboard",
+                        icon:
+                          user?.role === "buyer" ? (
+                            <FiShoppingBag size={15} />
+                          ) : (
+                            <FiGrid size={15} />
+                          ),
+                        label:
+                          user?.role === "buyer" ? "My Orders" : "Dashboard",
                         action: () => {
-                          navigate(dashboardPath);
+                          navigate(
+                            user?.role === "buyer"
+                              ? "/buyer?tab=orders"
+                              : dashboardPath
+                          );
                           closeMenus();
                         },
                       },
@@ -483,7 +490,6 @@ const Navbar = () => {
                     ))}
                   </div>
 
-                  {/* LOGOUT */}
                   <div
                     style={{
                       borderTop: "1px solid rgba(212,175,55,0.1)",
@@ -540,12 +546,13 @@ const Navbar = () => {
           {(!user || user.role === "buyer") && (
             <Link to="/cart" onClick={closeMenus} className="cart-icon-btn">
               <FiShoppingCart size={34} />
-              {totalItems > 0 && <span className="cart-count">{totalItems}</span>}
+              {totalItems > 0 && (
+                <span className="cart-count">{totalItems}</span>
+              )}
             </Link>
           )}
         </div>
 
-        {/* MOBILE MENU BUTTON */}
         <button
           className="lg:hidden text-white"
           onClick={() => setMenuOpen((prev) => !prev)}
@@ -554,7 +561,6 @@ const Navbar = () => {
         </button>
       </nav>
 
-      {/* MOBILE DROPDOWN */}
       {menuOpen && (
         <div className="lg:hidden panel mx-5 mt-3 space-y-4">
           {(!user || user.role === "buyer") && (
@@ -598,11 +604,13 @@ const Navbar = () => {
           ) : (
             <>
               <Link
-                to={dashboardPath}
+                to={
+                  user?.role === "buyer" ? "/buyer?tab=orders" : dashboardPath
+                }
                 onClick={closeMenus}
                 className="block py-2 hover:text-[var(--gold)]"
               >
-                Dashboard
+                {user?.role === "buyer" ? "My Orders" : "Dashboard"}
               </Link>
 
               <Link
@@ -632,7 +640,6 @@ const Navbar = () => {
         </div>
       )}
 
-      {/* AUTH MODAL */}
       {authModal && (
         <AuthModal mode={authModal} onClose={() => setAuthModal(null)} />
       )}

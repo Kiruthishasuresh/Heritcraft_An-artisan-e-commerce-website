@@ -6,7 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import DashboardLayout from "../components/DashboardLayout";
 import AdminReviews from "../components/admin/AdminReviews";
 import ConfirmModal from "../components/common/ConfirmModal";
-import { FiGrid, FiUsers, FiShoppingBag, FiPackage, FiBarChart2, FiCheck, FiX, FiUserCheck, FiUserX, FiUser, FiSettings, FiMail, FiPhone, FiMapPin, FiEdit2, FiShield, FiStar, FiDownload, FiAlertTriangle } from "react-icons/fi";
+import { FiGrid, FiUsers, FiShoppingBag, FiPackage, FiBarChart2, FiCheck, FiX, FiUserCheck, FiUserX, FiUser, FiSettings, FiMail, FiPhone, FiMapPin, FiEdit2, FiShield, FiStar, FiDownload, FiAlertTriangle, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
 const STATUS_COLORS = {
   PLACED: { bg: "#fef3c7", color: "#92400e" }, PACKED: { bg: "#dbeafe", color: "#1e40af" },
@@ -41,7 +41,7 @@ const RefundStatusBadge = ({ status }) => {
 const AdminDashboard = () => {
   const { user, updateUser } = useAuth();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [sellers, setSellers] = useState([]);
   const [pendingSellers, setPendingSellers] = useState([]);
@@ -56,13 +56,30 @@ const AdminDashboard = () => {
   const [refundRequests, setRefundRequests] = useState([]);
   const [loadingRefunds, setLoadingRefunds] = useState(false);
   const [confirmRefundAction, setConfirmRefundAction] = useState(null);
+  const [confirmSellerAction, setConfirmSellerAction] = useState(null);
+  const [confirmUserStatusAction, setConfirmUserStatusAction] = useState(null);
+  const [confirmProductAction, setConfirmProductAction] = useState(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(null);
+  const [confirmDeleteProduct, setConfirmDeleteProduct] = useState(null);
   const [searchParams] = useSearchParams();
+  const [adminOrdersPage, setAdminOrdersPage] = useState(1);
+  const adminOrdersPerPage = 8;
 
   // Read ?tab=profile from URL on mount
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam) setActiveTab(tabParam);
+    if (tabParam && tabParam !== "dashboard" && tabParam !== "overview") {
+      setActiveTab(tabParam);
+    } else if (tabParam === "dashboard" || tabParam === "overview") {
+      setActiveTab("users");
+    }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab === "orders") {
+      setAdminOrdersPage(1);
+    }
+  }, [activeTab, orders.length]);
 
   // Reports State
   const [reportRange, setReportRange] = useState("daily");
@@ -74,7 +91,6 @@ const AdminDashboard = () => {
 
   const tabs = useMemo(() => {
     const list = [
-      { key: "dashboard", label: "Overview", icon: <FiGrid /> },
       { key: "sellers", label: "Sellers", icon: <FiUserCheck /> },
       { key: "users", label: "Users", icon: <FiUsers /> },
       { key: "products", label: "Products", icon: <FiPackage /> },
@@ -93,36 +109,66 @@ const AdminDashboard = () => {
   const loadOverviewData = async () => {
     setLoading(true);
     try {
-      const [statsRes, pendingRes] = await Promise.all([
+      const [statsRes, pendingRes, usersRes, sellersRes, prodRes, ordersRes] = await Promise.all([
         orderAPI.getAdminStats(),
         userAPI.getPendingSellers(),
+        userAPI.getAll(),
+        userAPI.getSellers(),
+        productAPI.getAllAdmin(),
+        orderAPI.getAllAdmin(),
       ]);
       setOrderStats(statsRes.data || {});
       setPendingSellers(pendingRes.data || []);
+      setUsers(usersRes.data || []);
+      setSellers(sellersRes.data || []);
+      setProducts(prodRes.data || []);
+      setOrders(ordersRes.data || []);
     } catch (e) { console.error(e); }
     setLoading(false);
   };
 
   const loadSellersData = async () => {
     setLoading(true);
+
     try {
-      const [sellersRes, pendingRes] = await Promise.all([
+      const [sellersRes, pendingRes, prodRes, ordersRes] = await Promise.all([
         userAPI.getSellers(),
         userAPI.getPendingSellers(),
+        productAPI.getAllAdmin(),
+        orderAPI.getAllAdmin(),
       ]);
+
       setSellers(sellersRes.data || []);
       setPendingSellers(pendingRes.data || []);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+      setProducts(prodRes.data || []);
+      setOrders(ordersRes.data || []);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load sellers");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadUsersData = async () => {
     setLoading(true);
+
     try {
-      const usersRes = await userAPI.getAll();
+      const [usersRes, ordersRes, prodRes] = await Promise.all([
+        userAPI.getAll(),
+        orderAPI.getAllAdmin(),
+        productAPI.getAllAdmin(),
+      ]);
+
       setUsers(usersRes.data || []);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+      setOrders(ordersRes.data || []);
+      setProducts(prodRes.data || []);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadProductsData = async () => {
@@ -176,8 +222,7 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    if (activeTab === "dashboard") loadOverviewData();
-    else if (activeTab === "sellers") loadSellersData();
+    if (activeTab === "sellers") loadSellersData();
     else if (activeTab === "users") loadUsersData();
     else if (activeTab === "products") loadProductsData();
     else if (activeTab === "orders") loadOrdersData();
@@ -190,7 +235,7 @@ const AdminDashboard = () => {
       await productAPI.updateSellerApproval(id, true);
       toast.success("Seller approved");
       if (activeTab === "sellers") loadSellersData();
-      else loadOverviewData();
+      else loadSellersData();
     } catch (e) { toast.error(e.response?.data?.message || "Approve failed"); }
   };
 
@@ -200,7 +245,7 @@ const AdminDashboard = () => {
       await productAPI.updateSellerApproval(id, false);
       toast.success("Seller rejected");
       if (activeTab === "sellers") loadSellersData();
-      else loadOverviewData();
+      else loadSellersData();
     } catch (e) { toast.error(e.response?.data?.message || "Reject failed"); }
   };
 
@@ -213,13 +258,59 @@ const AdminDashboard = () => {
     catch (e) { toast.error("Failed"); }
   };
 
-  const handleDeleteUser = async (id) => {
+  const handleConfirmSellerAction = async () => {
+    if (!confirmSellerAction) return;
+
     try {
-      await userAPI.deleteUser(id);
+      if (confirmSellerAction.action === "approve") {
+        await handleApprove(confirmSellerAction.id);
+      } else {
+        await handleReject(confirmSellerAction.id);
+      }
+    } finally {
+      setConfirmSellerAction(null);
+    }
+  };
+
+  const handleConfirmUserStatusAction = async () => {
+    if (!confirmUserStatusAction) return;
+
+    try {
+      if (confirmUserStatusAction.action === "enable") {
+        await handleEnable(confirmUserStatusAction.id);
+      } else {
+        await handleDisable(confirmUserStatusAction.id);
+      }
+    } finally {
+      setConfirmUserStatusAction(null);
+    }
+  };
+
+  const handleConfirmProductAction = async () => {
+    if (!confirmProductAction) return;
+
+    try {
+      if (confirmProductAction.action === "approve") {
+        await handleApproveProduct(confirmProductAction.id);
+      } else {
+        await handleRejectProduct(confirmProductAction.id);
+      }
+    } finally {
+      setConfirmProductAction(null);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!confirmDeleteUser) return;
+
+    try {
+      await userAPI.deleteUser(confirmDeleteUser.id);
       toast.success("User deleted successfully");
       loadUsersData();
     } catch (e) {
       toast.error(e.response?.data?.message || "Failed to delete user");
+    } finally {
+      setConfirmDeleteUser(null);
     }
   };
 
@@ -243,13 +334,17 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleDeleteProduct = async (id) => {
+  const handleDeleteProduct = async () => {
+    if (!confirmDeleteProduct) return;
+
     try {
-      await productAPI.delete(id);
+      await productAPI.delete(confirmDeleteProduct.id);
       toast.success("Product deleted successfully");
-      loadData();
+      loadProductsData();
     } catch (e) {
       toast.error(e.response?.data?.message || "Delete failed");
+    } finally {
+      setConfirmDeleteProduct(null);
     }
   };
 
@@ -313,6 +408,47 @@ const AdminDashboard = () => {
   const formatCurrency = (v) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v || 0);
   const formatDate = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-";
 
+  const totalAdminOrderPages = Math.max(1, Math.ceil(orders.length / adminOrdersPerPage));
+  const paginatedAdminOrders = orders.slice(
+    (adminOrdersPage - 1) * adminOrdersPerPage,
+    adminOrdersPage * adminOrdersPerPage
+  );
+
+  const getAdminOrderPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, adminOrdersPage - 2);
+    let end = Math.min(totalAdminOrderPages, start + maxVisible - 1);
+
+    if (end - start < maxVisible - 1) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+
+    for (let i = start; i <= end; i += 1) {
+      pages.push(i);
+    }
+
+    return pages;
+  };
+
+  const adminOrderPaginationBtn = (active = false, disabled = false) => ({
+    minWidth: 38,
+    height: 38,
+    padding: "0 12px",
+    borderRadius: 10,
+    border: active ? "1px solid var(--gold)" : "1px solid #333",
+    background: active ? "var(--gold)" : "#141414",
+    color: active ? "#000" : disabled ? "#555" : "#ddd",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontWeight: 700,
+    fontSize: 13,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    opacity: disabled ? 0.55 : 1,
+  });
+
   const cardStyle = (borderColor) => ({ background: "#141414", borderRadius: 16, padding: "22px 24px", borderLeft: `4px solid ${borderColor}`, borderTop: "1px solid rgba(212,175,55,0.10)", borderRight: "1px solid rgba(212,175,55,0.10)", borderBottom: "1px solid rgba(212,175,55,0.10)" });
   const tableStyle = { width: "100%", borderCollapse: "collapse", fontSize: 13 };
   const thStyle = { padding: "12px 14px", textAlign: "left", color: "#999", borderBottom: "1px solid #222", fontWeight: 600, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 };
@@ -321,15 +457,41 @@ const AdminDashboard = () => {
   const buyerCount = users.filter(u => u.role === "buyer").length;
   const sellerCount = sellers.length;
 
+  const validateReportDates = (showToast = true) => {
+    if (!reportStartDate || !reportEndDate) {
+      if (showToast) {
+        toast.error("Please select start date and end date");
+      }
+      return false;
+    }
+
+    if (new Date(reportStartDate) > new Date(reportEndDate)) {
+      if (showToast) {
+        toast.error("Start date cannot be after end date");
+      }
+      return false;
+    }
+
+    return true;
+  };
+
   const fetchReports = async () => {
+    if (!validateReportDates(false)) {
+      setReportSummary(null);
+      setReportTrend([]);
+      return;
+    }
+
     try {
       setLoadingReport(true);
+
       const [summaryRes, trendRes] = await Promise.all([
         reportAPI.getAdminSummary(reportRange, reportStartDate, reportEndDate),
-        reportAPI.getAdminSalesTrend(reportRange, reportStartDate, reportEndDate)
+        reportAPI.getAdminSalesTrend(reportRange, reportStartDate, reportEndDate),
       ]);
+
       setReportSummary(summaryRes.data);
-      setReportTrend(trendRes.data);
+      setReportTrend(trendRes.data || []);
     } catch (err) {
       console.error("Failed to fetch reports", err);
       toast.error("Failed to load report data");
@@ -339,41 +501,83 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    if (activeTab === "reports") {
-      fetchReports();
+    if (activeTab !== "reports") return;
+
+    if (reportStartDate && reportEndDate) {
+      if (new Date(reportStartDate) <= new Date(reportEndDate)) {
+        fetchReports();
+      } else {
+        setReportSummary(null);
+        setReportTrend([]);
+      }
+    } else {
+      setReportSummary(null);
+      setReportTrend([]);
     }
   }, [activeTab, reportRange, reportStartDate, reportEndDate]);
 
   const handleDownloadPDF = async () => {
+    if (!validateReportDates(true)) return;
+
     try {
       toast.info("Generating PDF report...");
-      const res = await reportAPI.downloadAdminReport("pdf", reportRange, reportStartDate, reportEndDate);
+
+      const res = await reportAPI.downloadAdminReport(
+        "pdf",
+        reportRange,
+        reportStartDate,
+        reportEndDate
+      );
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
+
       link.href = url;
-      link.setAttribute("download", `admin_report_${reportRange}.pdf`);
+      link.setAttribute(
+        "download",
+        `admin_report_${reportRange}_${reportStartDate}_to_${reportEndDate}.pdf`
+      );
+
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
+
       toast.success("PDF downloaded successfully");
     } catch (err) {
+      console.error(err);
       toast.error("Failed to download PDF");
     }
   };
 
   const handleDownloadCSV = async () => {
+    if (!validateReportDates(true)) return;
+
     try {
       toast.info("Generating CSV report...");
-      const res = await reportAPI.downloadAdminReport("csv", reportRange, reportStartDate, reportEndDate);
+
+      const res = await reportAPI.downloadAdminReport(
+        "csv",
+        reportRange,
+        reportStartDate,
+        reportEndDate
+      );
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
+
       link.href = url;
-      link.setAttribute("download", `admin_report_${reportRange}.csv`);
+      link.setAttribute(
+        "download",
+        `admin_report_${reportRange}_${reportStartDate}_to_${reportEndDate}.csv`
+      );
+
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
+
       toast.success("CSV downloaded successfully");
     } catch (err) {
+      console.error(err);
       toast.error("Failed to download CSV");
     }
   };
@@ -388,47 +592,6 @@ const AdminDashboard = () => {
 
   return (
     <DashboardLayout tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab}>
-      {/* DASHBOARD */}
-      {activeTab === "dashboard" && (
-        <div>
-          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "1.6rem", color: "var(--gold)", marginBottom: 24 }}>Platform Overview</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
-            {[
-              { label: "Buyers", value: buyerCount, color: "#3b82f6" },
-              { label: "Sellers", value: sellerCount, color: "#22c55e" },
-              { label: "Pending Sellers", value: pendingSellers.length, color: "#f59e0b" },
-              { label: "Products", value: products.length, color: "#8b5cf6" },
-              { label: "Total Orders", value: orderStats.totalOrders || 0, color: "#ec4899" },
-              { label: "Refund Requests", value: orderStats.pendingRefunds || 0, color: "#ef4444" },
-              { label: "Revenue", value: formatCurrency(orderStats.totalRevenue), color: "#d4af37" },
-            ].map((c, i) => (
-              <div key={i} style={cardStyle(c.color)}>
-                <p style={{ color: "#999", fontSize: 12, marginBottom: 8 }}>{c.label}</p>
-                <p style={{ fontSize: 26, fontWeight: 700, color: "#fff" }}>{c.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {pendingSellers.length > 0 && (
-            <div style={{ ...cardStyle("#f59e0b"), borderLeft: "none" }}>
-              <h3 style={{ color: "#f59e0b", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Pending Seller Approvals</h3>
-              {pendingSellers.map(s => (
-                <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #1a1a1a" }}>
-                  <div>
-                    <p style={{ color: "#fff", fontWeight: 500 }}>{s.name}</p>
-                    <p style={{ color: "#888", fontSize: 12 }}>{s.email} {s.shopName && `— ${s.shopName}`}</p>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => handleApprove(s.id)} style={{ background: "rgba(34,197,94,0.15)", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", color: "#22c55e", fontSize: 13, fontWeight: 600 }}>Approve</button>
-                    <button onClick={() => handleReject(s.id)} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", color: "#ef4444", fontSize: 13, fontWeight: 600 }}>Reject</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* SELLERS */}
       {activeTab === "sellers" && (
         <div>
@@ -452,8 +615,8 @@ const AdminDashboard = () => {
                     {s.shopName && <p style={{ color: "#ccc", fontSize: 13, marginBottom: 4 }}>Shop: {s.shopName}</p>}
                     {s.shopDescription && <p style={{ color: "#888", fontSize: 12, marginBottom: 12, lineHeight: 1.5 }}>{s.shopDescription}</p>}
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => handleApprove(s.id)} className="btn-gold" style={{ flex: 1, padding: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><FiCheck /> Approve</button>
-                      <button onClick={() => handleReject(s.id)} style={{ flex: 1, padding: "10px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#ef4444", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><FiX /> Reject</button>
+                      <button onClick={() => setConfirmSellerAction({ id: s.id, name: s.name, action: "approve" })} className="btn-gold" style={{ flex: 1, padding: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><FiCheck /> Approve</button>
+                      <button onClick={() => setConfirmSellerAction({ id: s.id, name: s.name, action: "reject" })} style={{ flex: 1, padding: "10px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#ef4444", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><FiX /> Reject</button>
                     </div>
                   </div>
                 ))}
@@ -471,17 +634,33 @@ const AdminDashboard = () => {
               <tbody>
                 {sellers.map(s => (
                   <tr key={s.id}>
-                    <td style={tdStyle}>{s.name}</td><td style={tdStyle}>{s.email}</td><td style={tdStyle}>{s.shopName || "-"}</td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        cursor: "pointer",
+                        color: "var(--gold)",
+                        fontWeight: 600,
+                      }}
+                      onClick={() => setSelectedUserActivity(s)}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.textDecoration = "underline";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.textDecoration = "none";
+                      }}
+                    >
+                      {s.name}
+                    </td><td style={tdStyle}>{s.email}</td><td style={tdStyle}>{s.shopName || "-"}</td>
                     <td style={tdStyle}><span style={{ color: s.approved ? "#22c55e" : "#f59e0b", fontWeight: 600 }}>{s.approved ? "Approved" : "Pending"}</span></td>
                     <td style={tdStyle}><span style={{ color: s.active ? "#22c55e" : "#ef4444" }}>{s.active ? "Active" : "Disabled"}</span></td>
                     <td style={tdStyle}>{formatDate(s.createdAt)}</td>
                     <td style={tdStyle}>
                       {s.approved ? (
-                        <button onClick={() => handleReject(s.id)} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#ef4444", fontSize: 12, fontWeight: 500 }}>
+                        <button onClick={() => setConfirmSellerAction({ id: s.id, name: s.name, action: "reject" })} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#ef4444", fontSize: 12, fontWeight: 500 }}>
                           Reject
                         </button>
                       ) : (
-                        <button onClick={() => handleApprove(s.id)} style={{ background: "rgba(34,197,94,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#22c55e", fontSize: 12, fontWeight: 500 }}>
+                        <button onClick={() => setConfirmSellerAction({ id: s.id, name: s.name, action: "approve" })} style={{ background: "rgba(34,197,94,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#22c55e", fontSize: 12, fontWeight: 500 }}>
                           Approve
                         </button>
                       )}
@@ -537,15 +716,33 @@ const AdminDashboard = () => {
                         {u.role !== "admin" && (
                           <div style={{ display: "flex", gap: 8 }}>
                             {u.active ? (
-                              <button onClick={() => handleDisable(u.id)} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#ef4444", fontSize: 12, fontWeight: 500 }}>
+                              <button onClick={() => setConfirmUserStatusAction({ id: u.id, name: u.name, action: "disable" })} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#ef4444", fontSize: 12, fontWeight: 500 }}>
                                 Block
                               </button>
                             ) : (
-                              <button onClick={() => handleEnable(u.id)} style={{ background: "rgba(34,197,94,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#22c55e", fontSize: 12, fontWeight: 500 }}>
+                              <button onClick={() => setConfirmUserStatusAction({ id: u.id, name: u.name, action: "enable" })} style={{ background: "rgba(34,197,94,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#22c55e", fontSize: 12, fontWeight: 500 }}>
                                 Unblock
                               </button>
                             )}
-                            <button onClick={() => handleDeleteUser(u.id)} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: "#ef4444", fontSize: 12, fontWeight: 500 }}>
+                            <button
+                              onClick={() =>
+                                setConfirmDeleteUser({
+                                  id: u.id,
+                                  name: u.name,
+                                  email: u.email,
+                                })
+                              }
+                              style={{
+                                background: "rgba(239,68,68,0.15)",
+                                border: "none",
+                                borderRadius: 8,
+                                padding: "6px 14px",
+                                cursor: "pointer",
+                                color: "#ef4444",
+                                fontSize: 12,
+                                fontWeight: 500,
+                              }}
+                            >
                               Delete
                             </button>
                           </div>
@@ -589,15 +786,32 @@ const AdminDashboard = () => {
                     <td style={tdStyle}>
                       <div style={{ display: "flex", gap: 8 }}>
                         {!p.approved ? (
-                          <button onClick={() => handleApproveProduct(p.id || p._id)} style={{ background: "rgba(34,197,94,0.15)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#22c55e", fontSize: 12, fontWeight: 600 }}>
+                          <button onClick={() => setConfirmProductAction({ id: p.id || p._id, name: p.name, action: "approve" })} style={{ background: "rgba(34,197,94,0.15)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#22c55e", fontSize: 12, fontWeight: 600 }}>
                             Approve
                           </button>
                         ) : (
-                          <button onClick={() => handleRejectProduct(p.id || p._id)} style={{ background: "rgba(245,158,11,0.15)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#f59e0b", fontSize: 12, fontWeight: 600 }}>
+                          <button onClick={() => setConfirmProductAction({ id: p.id || p._id, name: p.name, action: "reject" })} style={{ background: "rgba(245,158,11,0.15)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#f59e0b", fontSize: 12, fontWeight: 600 }}>
                             Reject
                           </button>
                         )}
-                        <button onClick={() => handleDeleteProduct(p.id || p._id)} style={{ background: "rgba(239,68,68,0.15)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#ef4444", fontSize: 12, fontWeight: 600 }}>
+                        <button
+                          onClick={() =>
+                            setConfirmDeleteProduct({
+                              id: p.id || p._id,
+                              name: p.name,
+                            })
+                          }
+                          style={{
+                            background: "rgba(239,68,68,0.15)",
+                            border: "none",
+                            borderRadius: 8,
+                            padding: "6px 12px",
+                            cursor: "pointer",
+                            color: "#ef4444",
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
                           Delete
                         </button>
                       </div>
@@ -622,7 +836,7 @@ const AdminDashboard = () => {
                 <th style={thStyle}>Pay Status</th><th style={thStyle}>Txn ID</th><th style={thStyle}>Order Status</th><th style={thStyle}>Total</th><th style={thStyle}>Date</th>
               </tr></thead>
               <tbody>
-                {orders.map(o => (
+                {paginatedAdminOrders.map(o => (
                   <tr key={o.id}>
                     <td style={tdStyle}>{o.id?.slice(-8)}</td>
                     <td style={tdStyle}>{o.fullName || o.userName}</td>
@@ -638,6 +852,65 @@ const AdminDashboard = () => {
             </table>
             {orders.length === 0 && <p style={{ textAlign: "center", padding: 32, color: "#666" }}>No orders</p>}
           </div>
+
+          {orders.length > adminOrdersPerPage && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 12,
+                marginTop: 24,
+                width: "100%",
+              }}
+            >
+              <p style={{ color: "#888", fontSize: 13, margin: 0, textAlign: "center" }}>
+                Showing {(adminOrdersPage - 1) * adminOrdersPerPage + 1}-
+                {Math.min(adminOrdersPage * adminOrdersPerPage, orders.length)} of {orders.length} orders
+              </p>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  width: "100%",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={adminOrdersPage === 1}
+                  onClick={() => setAdminOrdersPage((p) => Math.max(1, p - 1))}
+                  style={adminOrderPaginationBtn(false, adminOrdersPage === 1)}
+                >
+                  <FiChevronLeft size={16} /> Previous
+                </button>
+
+                {getAdminOrderPageNumbers().map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setAdminOrdersPage(page)}
+                    style={adminOrderPaginationBtn(page === adminOrdersPage)}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  disabled={adminOrdersPage === totalAdminOrderPages}
+                  onClick={() => setAdminOrdersPage((p) => Math.min(totalAdminOrderPages, p + 1))}
+                  style={adminOrderPaginationBtn(false, adminOrdersPage === totalAdminOrderPages)}
+                >
+                  Next <FiChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -672,11 +945,52 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          <div style={{ padding: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8 }}>
-            <p style={{ color: "#22c55e", fontSize: 12, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <FiCheck /> Razorpay Online Payment & COD metrics are fully integrated and synced with reports.
-            </p>
-          </div>
+          
+          {(!reportStartDate || !reportEndDate) && (
+            <div
+              style={{
+                padding: 14,
+                background: "rgba(245,158,11,0.1)",
+                border: "1px solid rgba(245,158,11,0.25)",
+                borderRadius: 8,
+              }}
+            >
+              <p
+                style={{
+                  color: "#f59e0b",
+                  fontSize: 13,
+                  margin: 0,
+                  fontWeight: 600,
+                }}
+              >
+                Please select start date and end date to generate report.
+              </p>
+            </div>
+          )}
+
+          {reportStartDate &&
+            reportEndDate &&
+            new Date(reportStartDate) > new Date(reportEndDate) && (
+              <div
+                style={{
+                  padding: 14,
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  borderRadius: 8,
+                }}
+              >
+                <p
+                  style={{
+                    color: "#ef4444",
+                    fontSize: 13,
+                    margin: 0,
+                    fontWeight: 600,
+                  }}
+                >
+                  Start date cannot be after end date.
+                </p>
+              </div>
+            )}
 
           {loadingReport ? (
             <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div className="w-8 h-8 border-2 border-[var(--gold)] border-t-transparent rounded-full animate-spin" /></div>
@@ -1041,11 +1355,75 @@ const AdminDashboard = () => {
             </button>
 
             <h3 style={{ fontFamily: "var(--font-heading)", color: "var(--gold)", fontSize: 20, marginBottom: 6 }}>
-              Activity Log
+              User Details
             </h3>
-            <p style={{ color: "#aaa", fontSize: 13, marginBottom: 24 }}>
-              User: <strong style={{ color: "#fff" }}>{selectedUserActivity.name}</strong> ({selectedUserActivity.email}) &bull; Role: <span style={{ textTransform: "capitalize", color: "var(--gold)" }}>{selectedUserActivity.role}</span>
-            </p>
+
+            <div
+              style={{
+                background: "#0d0d0d",
+                border: "1px solid rgba(212,175,55,0.12)",
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 24,
+              }}
+            >
+              <p style={{ color: "#fff", fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
+                {selectedUserActivity.name}
+              </p>
+
+              <p style={{ color: "#aaa", fontSize: 13, marginBottom: 4 }}>
+                Email: <span style={{ color: "#ddd" }}>{selectedUserActivity.email}</span>
+              </p>
+
+              <p style={{ color: "#aaa", fontSize: 13, marginBottom: 4 }}>
+                Role: {" "}
+                <span
+                  style={{
+                    color: "var(--gold)",
+                    textTransform: "capitalize",
+                    fontWeight: 600,
+                  }}
+                >
+                  {selectedUserActivity.role}
+                </span>
+              </p>
+
+              {selectedUserActivity.role === "seller" && (
+                <>
+                  <p style={{ color: "#aaa", fontSize: 13, marginBottom: 4 }}>
+                    Shop: <span style={{ color: "#ddd" }}>{selectedUserActivity.shopName || "-"}</span>
+                  </p>
+
+                  <p style={{ color: "#aaa", fontSize: 13, marginBottom: 4 }}>
+                    Approval: {" "}
+                    <span
+                      style={{
+                        color: selectedUserActivity.approved ? "#22c55e" : "#f59e0b",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {selectedUserActivity.approved ? "Approved" : "Pending"}
+                    </span>
+                  </p>
+                </>
+              )}
+
+              <p style={{ color: "#aaa", fontSize: 13, marginBottom: 4 }}>
+                Status: {" "}
+                <span
+                  style={{
+                    color: selectedUserActivity.active ? "#22c55e" : "#ef4444",
+                    fontWeight: 600,
+                  }}
+                >
+                  {selectedUserActivity.active ? "Active" : "Disabled"}
+                </span>
+              </p>
+
+              <p style={{ color: "#aaa", fontSize: 13, margin: 0 }}>
+                Joined: <span style={{ color: "#ddd" }}>{formatDate(selectedUserActivity.createdAt)}</span>
+              </p>
+            </div>
 
             <div style={{ marginTop: 16 }}>
               {selectedUserActivity.role === "buyer" && (() => {
@@ -1158,6 +1536,71 @@ const AdminDashboard = () => {
         type={confirmRefundAction?.action === "approve" ? "success" : "danger"}
         onConfirm={() => handleRefundAction(confirmRefundAction.orderId, confirmRefundAction.action)}
         onCancel={() => setConfirmRefundAction(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!confirmSellerAction}
+        title={confirmSellerAction?.action === "approve" ? "Approve Seller" : "Reject Seller"}
+        message={`Are you sure you want to ${
+          confirmSellerAction?.action === "approve" ? "approve" : "reject"
+        } ${confirmSellerAction?.name || "this seller"}?`}
+        confirmText={confirmSellerAction?.action === "approve" ? "Approve Seller" : "Reject Seller"}
+        cancelText="Cancel"
+        type={confirmSellerAction?.action === "approve" ? "success" : "danger"}
+        onConfirm={handleConfirmSellerAction}
+        onCancel={() => setConfirmSellerAction(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!confirmUserStatusAction}
+        title={confirmUserStatusAction?.action === "enable" ? "Unblock User" : "Block User"}
+        message={`Are you sure you want to ${
+          confirmUserStatusAction?.action === "enable" ? "unblock" : "block"
+        } ${confirmUserStatusAction?.name || "this user"}?`}
+        confirmText={confirmUserStatusAction?.action === "enable" ? "Unblock User" : "Block User"}
+        cancelText="Cancel"
+        type={confirmUserStatusAction?.action === "enable" ? "success" : "danger"}
+        onConfirm={handleConfirmUserStatusAction}
+        onCancel={() => setConfirmUserStatusAction(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!confirmProductAction}
+        title={confirmProductAction?.action === "approve" ? "Approve Product" : "Reject Product"}
+        message={`Are you sure you want to ${
+          confirmProductAction?.action === "approve" ? "approve" : "reject"
+        } ${confirmProductAction?.name || "this product"}?`}
+        confirmText={confirmProductAction?.action === "approve" ? "Approve Product" : "Reject Product"}
+        cancelText="Cancel"
+        type={confirmProductAction?.action === "approve" ? "success" : "danger"}
+        onConfirm={handleConfirmProductAction}
+        onCancel={() => setConfirmProductAction(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!confirmDeleteUser}
+        title="Delete User"
+        message={`Are you sure you want to delete ${
+          confirmDeleteUser?.name || "this user"
+        }? This action cannot be undone.`}
+        confirmText="Delete User"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={handleDeleteUser}
+        onCancel={() => setConfirmDeleteUser(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!confirmDeleteProduct}
+        title="Delete Product"
+        message={`Are you sure you want to delete ${
+          confirmDeleteProduct?.name || "this product"
+        }? This action cannot be undone.`}
+        confirmText="Delete Product"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={handleDeleteProduct}
+        onCancel={() => setConfirmDeleteProduct(null)}
       />
     </DashboardLayout>
   );

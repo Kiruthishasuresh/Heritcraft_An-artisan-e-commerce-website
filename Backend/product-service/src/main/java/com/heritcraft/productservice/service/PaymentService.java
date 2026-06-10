@@ -43,7 +43,7 @@ public class PaymentService {
     }
 
     public PaymentOrderResponse createRazorpayOrder(PaymentOrderRequest request, String authHeader) {
-        AuthUserResponse loggedInUser = getLoggedInUser(authHeader);
+        getLoggedInUser(authHeader);
         OrderRequest orderRequest = request.getOrderRequest();
         
         if (orderRequest == null || orderRequest.getItems() == null || orderRequest.getItems().isEmpty()) {
@@ -95,7 +95,7 @@ public class PaymentService {
     }
 
     public Order verifyPaymentAndCreateOrder(PaymentVerifyRequest request, String authHeader) {
-        AuthUserResponse loggedInUser = getLoggedInUser(authHeader);
+        getLoggedInUser(authHeader);
         
         boolean signatureValid = verifySignature(
                 request.getRazorpayOrderId(),

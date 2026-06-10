@@ -6,12 +6,11 @@ import com.heritcraft.userservice.dto.UserResponse;
 import com.heritcraft.userservice.dto.ForgotPasswordRequest;
 import com.heritcraft.userservice.dto.VerifyOtpRequest;
 import com.heritcraft.userservice.dto.ResetPasswordRequest;
-import com.heritcraft.userservice.security.JwtUtil;
 import com.heritcraft.userservice.service.UserService;
 import com.heritcraft.userservice.service.OtpService;
 import com.heritcraft.userservice.service.EmailService;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -29,17 +28,14 @@ import java.util.Map;
 public class AuthController {
 
     private final UserService userService;
-    private final JwtUtil jwtUtil;
     private final OtpService otpService;
     private final EmailService emailService;
 
     @org.springframework.beans.factory.annotation.Value("${rsa.public.key}")
     private String publicKey;
 
-    @Autowired
-    public AuthController(UserService userService, JwtUtil jwtUtil, OtpService otpService, EmailService emailService) {
+    public AuthController(UserService userService, OtpService otpService, EmailService emailService) {
         this.userService = userService;
-        this.jwtUtil = jwtUtil;
         this.otpService = otpService;
         this.emailService = emailService;
     }
@@ -154,5 +150,109 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Failed to update password."));
         }
+    }
+
+    @PostMapping("/phone-otp/send")
+    public ResponseEntity<Map<String, String>> sendPhoneOtp(
+            @Valid @RequestBody SendPhoneOtpRequest request
+    ) {
+        try {
+            userService.sendPhoneOtp(request.getPhone());
+            return ResponseEntity.ok(Map.of("message", "OTP sent successfully."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/phone-otp/verify")
+    public ResponseEntity<Map<String, Object>> verifyPhoneOtp(
+            @Valid @RequestBody VerifyPhoneOtpRequest request
+    ) {
+        boolean success = userService.verifyPhoneOtp(request.getPhone(), request.getOtp());
+        if (success) {
+            return ResponseEntity.ok(Map.of(
+                    "message", "Phone verified successfully",
+                    "phoneVerified", true
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Invalid or expired OTP."));
+        }
+    }
+
+    @lombok.Data
+    public static class SendPhoneOtpRequest {
+        @NotBlank(message = "Phone number is required")
+        private String phone;
+    }
+
+    @lombok.Data
+    public static class VerifyPhoneOtpRequest {
+        @NotBlank(message = "Phone number is required")
+        private String phone;
+
+        @NotBlank(message = "OTP is required")
+        private String otp;
+    }
+
+    @PostMapping("/verify-signup-mobile-otp")
+    public ResponseEntity<Map<String, String>> verifySignupMobileOtp(
+            @Valid @RequestBody VerifySignupMobileOtpRequest request
+    ) {
+        boolean success = userService.verifyPhoneOtp(request.getPhone(), request.getOtp());
+        if (success) {
+            return ResponseEntity.ok(Map.of("message", "Mobile number verified successfully."));
+        } else {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Invalid or expired OTP."));
+        }
+    }
+
+    @PostMapping("/resend-signup-mobile-otp")
+    public ResponseEntity<Map<String, String>> resendSignupMobileOtp(
+            @Valid @RequestBody ResendSignupMobileOtpRequest request
+    ) {
+        try {
+            userService.sendPhoneOtp(request.getPhone());
+            return ResponseEntity.ok(Map.of("message", "OTP resent successfully."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @lombok.Data
+    public static class VerifySignupMobileOtpRequest {
+        @NotBlank(message = "Phone number is required")
+        private String phone;
+
+        @NotBlank(message = "OTP is required")
+        private String otp;
+    }
+
+    @lombok.Data
+    public static class ResendSignupMobileOtpRequest {
+        @NotBlank(message = "Phone number is required")
+        private String phone;
+    }
+
+    @PostMapping("/send-signup-mobile-otp")
+    public ResponseEntity<Map<String, String>> sendSignupMobileOtp(
+            @Valid @RequestBody SendSignupMobileOtpRequest request
+    ) {
+        try {
+            userService.sendPhoneOtp(request.getPhone());
+            return ResponseEntity.ok(Map.of("message", "OTP sent successfully."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @lombok.Data
+    public static class SendSignupMobileOtpRequest {
+        @NotBlank(message = "Phone number is required")
+        private String phone;
     }
 }
