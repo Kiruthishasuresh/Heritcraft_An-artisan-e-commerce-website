@@ -72,6 +72,12 @@ public class User {
     @Column(name = "phone_verified_at")
     private LocalDateTime phoneVerifiedAt;
 
+    @Column(name = "email_verified")
+    private Boolean emailVerified = false;
+
+    @Column(name = "email_verified_at")
+    private LocalDateTime emailVerifiedAt;
+
     private LocalDateTime createdAt;
 
     @PrePersist
@@ -84,6 +90,9 @@ public class User {
         }
         if (phoneVerified == null) {
             phoneVerified = false;
+        }
+        if (emailVerified == null) {
+            emailVerified = false;
         }
         if (active == null) {
             active = false;

@@ -10,9 +10,11 @@ D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\dto\ResetPasswordRequest.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\dto\UserResponse.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\dto\VerifyOtpRequest.java
+D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\entity\EmailVerification.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\entity\OtpVerification.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\entity\PasswordResetOtp.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\entity\User.java
+D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\repository\EmailVerificationRepository.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\repository\OtpVerificationRepository.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\repository\PasswordResetOtpRepository.java
 D:\HWI\Heritcraft_\Heritcraft (2)\Heritcraft\Heritcraft\Backend\user-service\src\main\java\com\heritcraft\userservice\repository\UserRepository.java

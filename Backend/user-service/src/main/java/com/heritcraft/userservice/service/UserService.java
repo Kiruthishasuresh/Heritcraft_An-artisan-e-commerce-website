@@ -50,6 +50,9 @@ public class UserService {
         }
 
         // Enforce OTP verification before registration
+        if (!otpService.isEmailVerified(request.getEmail())) {
+            throw new RuntimeException("Email verification is required before signing up.");
+        }
         if (!otpService.isPhoneVerified(request.getPhone())) {
             throw new RuntimeException("Mobile number verification is required before signing up.");
         }
@@ -72,6 +75,8 @@ public class UserService {
         user.setPhone(request.getPhone());
         user.setPhoneVerified(true);
         user.setPhoneVerifiedAt(LocalDateTime.now());
+        user.setEmailVerified(true);
+        user.setEmailVerifiedAt(LocalDateTime.now());
 
         user.setActive(true);
 
@@ -91,6 +96,7 @@ public class UserService {
 
         // Mark OTP as used
         otpService.markPhoneOtpAsUsed(savedUser.getPhone());
+        otpService.markEmailOtpAsUsed(savedUser.getEmail());
 
         return mapToResponse(savedUser, null);
     }
@@ -135,6 +141,20 @@ public class UserService {
         String token = jwtUtil.generateToken(user);
 
         return mapToResponse(user, token);
+    }
+
+    public void sendEmailOtp(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            throw new RuntimeException("Email address is required");
+        }
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new RuntimeException("Email already exists");
+        }
+        otpService.generateAndSendEmailOtp(email);
+    }
+
+    public boolean verifyEmailOtp(String email, String otp) {
+        return otpService.verifyEmailOtp(email, otp);
     }
 
     public void sendPhoneOtp(String phone) {

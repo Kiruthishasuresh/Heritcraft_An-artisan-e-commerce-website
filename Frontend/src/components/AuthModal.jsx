@@ -33,6 +33,7 @@ const AuthModal = ({ mode = "login", onClose }) => {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [signupStep, setSignupStep] = useState(1);
+  const [emailOtp, setEmailOtp] = useState("");
   const [otpPhone, setOtpPhone] = useState("");
   const [signupOtp, setSignupOtp] = useState("");
 
@@ -131,8 +132,10 @@ const AuthModal = ({ mode = "login", onClose }) => {
               throw new Error("Please fill all seller profile fields");
             }
           }
-          // Move to step 2 (Enter Mobile Number screen)
-          setSignupStep(2);
+          // Send Email OTP
+          await authAPI.sendEmailOtp(form.email);
+          setSignupStep(2); // Move to Step 2 (Verify Email OTP)
+          toast.success("OTP sent to your email.");
           setLoading(false);
           return;
         }
@@ -141,7 +144,7 @@ const AuthModal = ({ mode = "login", onClose }) => {
         if (result?.phoneVerificationRequired) {
           setOtpPhone(result.phone);
           setForm(prev => ({ ...prev, role: result.role }));
-          setSignupStep(3); // Legacy login goes directly to verify OTP (Step 3)
+          setSignupStep(4); // Legacy login goes directly to verify OTP (Step 4)
           toast.success("Phone verification required. An OTP has been sent.");
           setLoading(false);
           return;
@@ -177,6 +180,37 @@ const AuthModal = ({ mode = "login", onClose }) => {
     setLoading(false);
   };
 
+  const handleVerifyEmailOtp = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      if (!emailOtp) {
+        throw new Error("Please enter the OTP");
+      }
+      await authAPI.verifyEmailOtp(form.email, emailOtp);
+      toast.success("Email verified successfully.");
+      setSignupStep(3); // Move to Enter Mobile screen (Step 3)
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Failed to verify email OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendEmailOtp = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await authAPI.sendEmailOtp(form.email);
+      toast.success("OTP resent to email successfully.");
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Failed to resend email OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSendMobileOtp = async (e) => {
     e.preventDefault();
     setError("");
@@ -187,7 +221,7 @@ const AuthModal = ({ mode = "login", onClose }) => {
       }
       await authAPI.sendPhoneOtp(form.phone);
       setOtpPhone(form.phone);
-      setSignupStep(3); // Move to Verify OTP screen (Step 3)
+      setSignupStep(4); // Move to Verify OTP screen (Step 4)
       toast.success("OTP sent successfully.");
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Failed to send OTP");
@@ -210,13 +244,14 @@ const AuthModal = ({ mode = "login", onClose }) => {
         await register(form);
         if (form.role === "seller") {
           setPendingMessage(
-            "Phone verified. Seller account is waiting for admin approval."
+            "Email & Phone verified. Seller account is waiting for admin approval."
           );
         } else {
           toast.success("Signup successful. Please login.");
           setCurrentMode("login");
           setSignupStep(1);
           setSignupOtp("");
+          setEmailOtp("");
           setForm({
             name: "",
             email: "",
@@ -233,6 +268,7 @@ const AuthModal = ({ mode = "login", onClose }) => {
         setCurrentMode("login");
         setSignupStep(1);
         setSignupOtp("");
+        setEmailOtp("");
         setForm(prev => ({ ...prev, password: "" }));
       }
     } catch (err) {
@@ -307,6 +343,67 @@ const AuthModal = ({ mode = "login", onClose }) => {
             <FiX size={26} />
           </button>
 
+          <h2 className="auth-title flex-shrink-0">Verify Email Address</h2>
+          <p className="auth-subtitle flex-shrink-0 mb-4">
+            OTP sent to <span className="text-[var(--gold)]">{form.email}</span>
+          </p>
+
+          <form onSubmit={handleVerifyEmailOtp} className="auth-form flex flex-col flex-1 min-h-0">
+            {error && (
+              <div className="error-box mb-4 text-red-400 text-center font-semibold flex-shrink-0">
+                {error}
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4 min-h-0">
+              <div className="field">
+                <label>Enter 6-digit OTP</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={emailOtp}
+                  onChange={(e) => setEmailOtp(e.target.value)}
+                  className="input-gold text-center tracking-widest font-bold text-xl"
+                  placeholder="000000"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 mt-4 border-t border-gray-800 flex-shrink-0">
+              <div className="flex justify-between items-center mb-4">
+                <span onClick={handleResendEmailOtp} className="text-xs text-[var(--gold)] cursor-pointer hover:underline font-bold">
+                  Resend OTP?
+                </span>
+                <span
+                  onClick={() => {
+                    setSignupStep(1);
+                    setError("");
+                  }}
+                  className="text-xs text-gray-400 cursor-pointer hover:underline font-bold"
+                >
+                  Back
+                </span>
+              </div>
+
+              <button type="submit" disabled={loading} className="btn-gold w-full text-xl py-4">
+                {loading ? <FiLoader className="animate-spin mx-auto" /> : "Verify Email"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSignup && signupStep === 3) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="auth-box max-h-[90vh] flex flex-col overflow-hidden animate-slideUp" onClick={(e) => e.stopPropagation()}>
+          <button onClick={onClose} className="auth-close">
+            <FiX size={26} />
+          </button>
+
           <h2 className="auth-title flex-shrink-0">Verify Mobile Number</h2>
           <p className="auth-subtitle flex-shrink-0 mb-4">
             Enter your mobile number to receive OTP
@@ -339,12 +436,12 @@ const AuthModal = ({ mode = "login", onClose }) => {
               <div className="flex justify-between items-center mb-4">
                 <span
                   onClick={() => {
-                    setSignupStep(1);
+                    setSignupStep(2);
                     setError("");
                   }}
                   className="text-xs text-gray-400 cursor-pointer hover:underline font-bold"
                 >
-                  Back to signup details
+                  Back to email verification
                 </span>
               </div>
 
@@ -358,7 +455,7 @@ const AuthModal = ({ mode = "login", onClose }) => {
     );
   }
 
-  if (signupStep === 3) {
+  if (signupStep === 4) {
     return (
       <div className="modal-overlay" onClick={onClose}>
         <div className="auth-box max-h-[90vh] flex flex-col overflow-hidden animate-slideUp" onClick={(e) => e.stopPropagation()}>
@@ -401,7 +498,7 @@ const AuthModal = ({ mode = "login", onClose }) => {
                 <span
                   onClick={() => {
                     if (isSignup) {
-                      setSignupStep(2);
+                      setSignupStep(3);
                     } else {
                       setSignupStep(1);
                       setCurrentMode("login");

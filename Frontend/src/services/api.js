@@ -64,6 +64,10 @@ export const authAPI = {
     API.post("/auth/phone-otp/verify", data),
   resendSignupMobileOtp: (data) =>
     API.post("/auth/phone-otp/send", data),
+  sendEmailOtp: (email) =>
+    API.post("/auth/email-otp/send", { email }),
+  verifyEmailOtp: (email, otp) =>
+    API.post("/auth/email-otp/verify", { email, otp }),
 };
 
 export const userAPI = {

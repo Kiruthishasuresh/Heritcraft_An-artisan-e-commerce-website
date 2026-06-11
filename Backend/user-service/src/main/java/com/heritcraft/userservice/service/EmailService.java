@@ -34,4 +34,25 @@ public class EmailService {
             System.err.println("----------------------------------------");
         }
     }
+
+    public void sendSignupOtpEmail(String toEmail, String otp) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(toEmail);
+        message.setSubject("HeritCraft - Email Verification OTP");
+        message.setText("Dear User,\n\n" +
+                "Thank you for registering with HeritCraft. To complete your signup process, please verify your email address. Your One Time Password (OTP) is:\n\n" +
+                otp + "\n\n" +
+                "This OTP is valid for 5 minutes and can be used only once.\n\n" +
+                "Best regards,\n" +
+                "HeritCraft Team");
+        try {
+            mailSender.send(message);
+            System.out.println("Verification email sent successfully to: " + toEmail);
+        } catch (Exception e) {
+            System.err.println("WARNING: Failed to send email to " + toEmail + ". Error: " + e.getMessage());
+            System.err.println("----------------------------------------");
+            System.err.println("DEVELOPER TESTING SIGNUP OTP FOR " + toEmail + ": " + otp);
+            System.err.println("----------------------------------------");
+        }
+    }
 }

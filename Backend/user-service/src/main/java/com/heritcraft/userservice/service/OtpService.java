@@ -2,8 +2,10 @@ package com.heritcraft.userservice.service;
 
 import com.heritcraft.userservice.entity.PasswordResetOtp;
 import com.heritcraft.userservice.entity.OtpVerification;
+import com.heritcraft.userservice.entity.EmailVerification;
 import com.heritcraft.userservice.repository.PasswordResetOtpRepository;
 import com.heritcraft.userservice.repository.OtpVerificationRepository;
+import com.heritcraft.userservice.repository.EmailVerificationRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -16,17 +18,23 @@ public class OtpService {
 
     private final PasswordResetOtpRepository otpRepository;
     private final OtpVerificationRepository otpVerificationRepository;
+    private final EmailVerificationRepository emailVerificationRepository;
     private final SmsService smsService;
+    private final EmailService emailService;
     private final Random random = new Random();
 
     public OtpService(
             PasswordResetOtpRepository otpRepository,
             OtpVerificationRepository otpVerificationRepository,
-            SmsService smsService
+            EmailVerificationRepository emailVerificationRepository,
+            SmsService smsService,
+            EmailService emailService
     ) {
         this.otpRepository = otpRepository;
         this.otpVerificationRepository = otpVerificationRepository;
+        this.emailVerificationRepository = emailVerificationRepository;
         this.smsService = smsService;
+        this.emailService = emailService;
     }
 
     public void generateAndSendSignupOtp(String phone) {
@@ -131,6 +139,53 @@ public class OtpService {
             PasswordResetOtp otpEntity = record.get();
             otpEntity.setUsed(true);
             otpRepository.save(otpEntity);
+        }
+    }
+
+    public void generateAndSendEmailOtp(String email) {
+        String otp = String.format("%06d", random.nextInt(1000000));
+
+        EmailVerification record = new EmailVerification();
+        record.setEmail(email);
+        record.setOtp(otp);
+        record.setExpiryTime(LocalDateTime.now().plusMinutes(5));
+        record.setAttempts(0);
+        record.setVerified(false);
+        record.setUsed(false);
+
+        emailVerificationRepository.save(record);
+
+        emailService.sendSignupOtpEmail(email, otp);
+    }
+
+    public boolean verifyEmailOtp(String email, String otp) {
+        Optional<EmailVerification> recordOpt = emailVerificationRepository.findByEmailAndOtpAndUsedFalse(email, otp);
+
+        if (recordOpt.isPresent()) {
+            EmailVerification record = recordOpt.get();
+            if (record.getExpiryTime().isAfter(LocalDateTime.now())) {
+                record.setVerified(true);
+                emailVerificationRepository.save(record);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isEmailVerified(String email) {
+        List<EmailVerification> records = emailVerificationRepository.findByEmailAndVerifiedTrueAndUsedFalseOrderByCreatedAtDesc(email);
+        if (records.isEmpty()) {
+            return false;
+        }
+        EmailVerification record = records.get(0);
+        return record.getExpiryTime().isAfter(LocalDateTime.now());
+    }
+
+    public void markEmailOtpAsUsed(String email) {
+        List<EmailVerification> records = emailVerificationRepository.findByEmailAndVerifiedTrueAndUsedFalseOrderByCreatedAtDesc(email);
+        for (EmailVerification record : records) {
+            record.setUsed(true);
+            emailVerificationRepository.save(record);
         }
     }
 }

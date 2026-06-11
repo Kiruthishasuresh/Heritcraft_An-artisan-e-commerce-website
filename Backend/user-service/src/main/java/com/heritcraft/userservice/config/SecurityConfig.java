@@ -51,7 +51,9 @@ public class SecurityConfig {
                                 "/api/auth/phone-otp/verify",
                                 "/api/auth/send-signup-mobile-otp",
                                 "/api/auth/verify-signup-mobile-otp",
-                                "/api/auth/resend-signup-mobile-otp"
+                                "/api/auth/resend-signup-mobile-otp",
+                                "/api/auth/email-otp/send",
+                                "/api/auth/email-otp/verify"
                         ).permitAll()
                         .requestMatchers("/api/users/approved-sellers").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()

@@ -9,12 +9,14 @@ com\heritcraft\userservice\controller\AuthController$VerifyPhoneOtpRequest.class
 com\heritcraft\userservice\dto\ChangePasswordRequest.class
 com\heritcraft\userservice\controller\AuthController.class
 com\heritcraft\userservice\dto\UserResponse.class
+com\heritcraft\userservice\controller\AuthController$VerifyEmailOtpRequest.class
 com\heritcraft\userservice\controller\AuthController$SendSignupMobileOtpRequest.class
 com\heritcraft\userservice\entity\User.class
 com\heritcraft\userservice\UserServiceApplication.class
 com\heritcraft\userservice\repository\UserRepository.class
 com\heritcraft\userservice\service\PasswordCryptoService.class
 com\heritcraft\userservice\entity\PasswordResetOtp.class
+com\heritcraft\userservice\repository\EmailVerificationRepository.class
 com\heritcraft\userservice\controller\AuthController$VerifySignupMobileOtpRequest.class
 com\heritcraft\userservice\controller\GlobalExceptionHandler.class
 com\heritcraft\userservice\repository\OtpVerificationRepository.class
@@ -24,8 +26,10 @@ com\heritcraft\userservice\service\SmsService.class
 com\heritcraft\userservice\service\OtpService.class
 com\heritcraft\userservice\config\SecurityConfig.class
 com\heritcraft\userservice\entity\OtpVerification.class
+com\heritcraft\userservice\controller\AuthController$SendEmailOtpRequest.class
 com\heritcraft\userservice\dto\LoginRequest.class
 com\heritcraft\userservice\dto\ProfileUpdateRequest.class
+com\heritcraft\userservice\entity\EmailVerification.class
 com\heritcraft\userservice\security\JwtUtil.class
 com\heritcraft\userservice\repository\PasswordResetOtpRepository.class
 com\heritcraft\userservice\security\JwtAuthFilter.class

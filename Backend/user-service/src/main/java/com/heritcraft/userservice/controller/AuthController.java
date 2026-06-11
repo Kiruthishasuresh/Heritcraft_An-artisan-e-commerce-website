@@ -255,4 +255,48 @@ public class AuthController {
         @NotBlank(message = "Phone number is required")
         private String phone;
     }
+
+    @PostMapping("/email-otp/send")
+    public ResponseEntity<Map<String, String>> sendEmailOtp(
+            @Valid @RequestBody SendEmailOtpRequest request
+    ) {
+        try {
+            userService.sendEmailOtp(request.getEmail());
+            return ResponseEntity.ok(Map.of("message", "OTP sent to your email successfully."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/email-otp/verify")
+    public ResponseEntity<Map<String, Object>> verifyEmailOtp(
+            @Valid @RequestBody VerifyEmailOtpRequest request
+    ) {
+        boolean success = userService.verifyEmailOtp(request.getEmail(), request.getOtp());
+        if (success) {
+            return ResponseEntity.ok(Map.of(
+                    "message", "Email verified successfully",
+                    "emailVerified", true
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Invalid or expired OTP."));
+        }
+    }
+
+    @lombok.Data
+    public static class SendEmailOtpRequest {
+        @NotBlank(message = "Email is required")
+        private String email;
+    }
+
+    @lombok.Data
+    public static class VerifyEmailOtpRequest {
+        @NotBlank(message = "Email is required")
+        private String email;
+
+        @NotBlank(message = "OTP is required")
+        private String otp;
+    }
 }
